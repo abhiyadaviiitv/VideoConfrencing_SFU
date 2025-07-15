@@ -1,0 +1,39 @@
+{
+  "name": "sfu",
+  "version": "1.0.0",
+  "description": "video call application using sfu server ",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon app.js",
+   "watch": "watchify public/index.js -o public/bundle.js -v -t [ babelify --global --presets [ @babel/preset-env ] ]"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abhiyadaviiitv/VideoConfrencing_SFU.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/abhiyadaviiitv/VideoConfrencing_SFU/issues"
+  },
+  "homepage": "https://github.com/abhiyadaviiitv/VideoConfrencing_SFU#readme",
+  "dependencies": {
+    "express": "^5.1.0",
+    "httpolyglot": "^0.1.2",
+    "mediasoup": "^3.16.5",
+    "mediasoup-client": "^3.12.4",
+    "nodemon": "^3.1.10",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
+    "watchify": "^4.0.0"
+  },
+  "type": "module",
+  "devDependencies": {
+    "@babel/core": "^7.28.0",
+    "@babel/plugin-proposal-class-properties": "^7.18.6",
+    "@babel/plugin-proposal-optional-chaining": "^7.21.0",
+    "@babel/preset-env": "^7.28.0",
+    "babelify": "^10.0.0"
+  }
+}
