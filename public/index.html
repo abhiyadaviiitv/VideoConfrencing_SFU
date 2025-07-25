@@ -1,86 +1,132 @@
+<!DOCTYPE html>
 <html>
-  <head>
+<head>
+    <title>Mediasoup Classroom</title>
     <style>
-        tr {
-            vertical-align: top;
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #roomSetup {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        #roomSetup input {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 200px;
+        }
+
+        #roomSetup button {
+            padding: 10px 15px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        #btnCreateRoom {
+            background-color: #28a745;
+            color: white;
+        }
+
+        #btnJoinRoom {
+            background-color: #007bff;
+            color: white;
+        }
+
+        #copyRoomCode {
+            background-color: #6c757d;
+            color: white;
+            margin-left: 10px;
+            display: none; /* Hidden by default, shown by JS */
+        }
+
+        #roomControls {
+            display: flex; /* Initially hidden, controlled by JS */
+            flex-direction: column;
+            align-items: center;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            width: 100%; /* Take full width of parent (body's flexbox) */
+            max-width: 700px; /* Limit max width for better layout */
+        }
+
+        #videoStreams {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap; /* Allow videos to wrap on smaller screens */
+            justify-content: center;
+        }
+
+        .video-container {
+            text-align: center;
+            flex-shrink: 0; /* Prevent shrinking on smaller screens */
         }
 
         .video {
-            width: 360px;
+            width: 320px;
+            height: 240px;
             background-color: black;
-            margin: 2px 0;
+            margin: 5px auto;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
         }
 
-        button {
-            margin: 2;
-        }
-
-        #sharedBtns {
-            padding: 5;
-            background-color: papayawhip;
-            display: flex;
-            justify-content: center;
+        h2 {
+            color: #333;
+            margin-top: 0;
         }
     </style>
-  </head>
-  <body>
-    <body>
-        <div id="video">
-            <table>
-                <thead>
-                    <th>Local Video</th>
-                    <th>Remote Video</th>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>
-                            <div id="sharedBtns">
-                                <video id="localVideo" autoplay class="video" ></video>
-                            </div>
-                        </td>
-                        <td>
-                            <div id="sharedBtns">
-                                <video id="remoteVideo" autoplay class="video" ></video>
-                            </div>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <div id="sharedBtns">
-                                <button id="btnLocalVideo">1. Get Local Video</button>
-                            </div>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td colspan="2">
-                            <div id="sharedBtns">
-                                <button id="btnRtpCapabilities">2. Get Rtp Capabilities</button>
-                                <br />
-                                <button id="btnDevice">3. Create Device</button>
-                            </div>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <div id="sharedBtns">
-                                <button id="btnCreateSendTransport">4. Create Send Transport</button>
-                                <br />
-                                <button id="btnConnectSendTransport">5. Connect Send Transport & Produce</button></td>
-                            </div>
-                        <td>
-                            <div id="sharedBtns">
-                                <button id="btnRecvSendTransport">6. Create Recv Transport</button>
-                                <br />
-                                <button id="btnConnectRecvTransport">7. Connect Recv Transport & Consume</button>
-                            </div>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+</head>
+<body>
+    <h1>Mediasoup Classroom</h1>
+
+    <div id="roomSetup">
+        <h2>Room Actions</h2>
+        <div>
+            <input type="text" id="roomCodeInput" placeholder="Enter Room Code to Join">
+            <button id="btnJoinRoom">Join Room</button>
         </div>
-    </body>
-  </body>
-  <footer>
-      <script src="bundle.js"></script>
-  </footer>
+        <hr style="margin: 15px 0;">
+        <div>
+            <button id="btnCreateRoom">Create New Room</button>
+        </div>
+        <p>Your Room Code: <span id="displayRoomCode">N/A</span> <button id="copyRoomCode">Copy</button></p>
+    </div>
+
+    <div id="roomControls">
+        <h2>In-Call</h2>
+        <div id="videoStreams">
+            <div class="video-container">
+                <h3>Local Video</h3>
+                <video id="localVideo" autoplay playsinline muted class="video"></video> </div>
+            <div class="video-container">
+                <h3>Remote Video</h3>
+                <video id="remoteVideo" autoplay playsinline class="video"></video>
+            </div>
+        </div>
+        </div>
+
+    <footer>
+        <script src="/socket.io/socket.io.js"></script>
+        <script src="bundle.js"></script>
+    </footer>
+</body>
 </html>

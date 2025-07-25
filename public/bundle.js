@@ -34828,611 +34828,6 @@ function _regenerator() { /*! regenerator-runtime -- Copyright (c) 2014-present,
 function _regeneratorDefine2(e, r, n, t) { var i = Object.defineProperty; try { i({}, "", {}); } catch (e) { i = 0; } _regeneratorDefine2 = function _regeneratorDefine(e, r, n, t) { if (r) i ? i(e, r, { value: n, enumerable: !t, configurable: !t, writable: !t }) : e[r] = n;else { var o = function o(r, n) { _regeneratorDefine2(e, r, function (e) { return this._invoke(r, n, e); }); }; o("next", 0), o("throw", 1), o("return", 2); } }, _regeneratorDefine2(e, r, n, t); }
 function asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
 function _asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
-// // //index.js
-// // const io = require('socket.io-client')
-// // const mediasoupClient = require('mediasoup-client')
-
-// // const socket = io("/mediasoup")
-
-// // socket.on('connection-success', ({ socketId }) => {
-// //   console.log(socketId)
-// // })
-
-// // let device
-// // let rtpCapabilities
-// // let producerTransport
-// // let consumerTransport
-// // let producer
-// // let consumer
-
-// // // https://mediasoup.org/documentation/v3/mediasoup-client/api/#ProducerOptions
-// // // https://mediasoup.org/documentation/v3/mediasoup-client/api/#transport-produce
-// // let params = {
-// //   // mediasoup params
-// //   encodings: [
-// //     {
-// //       rid: 'r0',
-// //       maxBitrate: 100000,
-// //       scalabilityMode: 'S1T3',
-// //     },
-// //     {
-// //       rid: 'r1',
-// //       maxBitrate: 300000,
-// //       scalabilityMode: 'S1T3',
-// //     },
-// //     {
-// //       rid: 'r2',
-// //       maxBitrate: 900000,
-// //       scalabilityMode: 'S1T3',
-// //     },
-// //   ],
-// //   // https://mediasoup.org/documentation/v3/mediasoup-client/api/#ProducerCodecOptions
-// //   codecOptions: {
-// //     videoGoogleStartBitrate: 1000
-// //   }
-// // }
-
-// // const streamSuccess = async (stream) => {
-// //   localVideo.srcObject = stream
-// //   const track = stream.getVideoTracks()[0]
-// //   params = {
-// //     track,
-// //     ...params
-// //   }
-// // }
-
-// // const getLocalStream = () => {
-// //   console.log("getting the local stream");
-// //   navigator.mediaDevices.getUserMedia({
-// //     audio: false,
-// //     video: {
-// //       width: { min: 640, max: 1920 },
-// //       height: { min: 400, max: 1080 }
-// //     }
-// //   })
-// //   .then(streamSuccess)
-// //   .catch(error => {
-// //     console.log("Error accessing media devices:", error);
-// //   });
-// // }
-// // // A device is an endpoint connecting to a Router on the 
-// // // server side to send/recive media
-// // const createDevice = async () => {
-// //   try {
-// //     device = new mediasoupClient.Device()
-
-// //     // https://mediasoup.org/documentation/v3/mediasoup-client/api/#device-load
-// //     // Loads the device with RTP capabilities of the Router (server side)
-// //     await device.load({
-// //       // see getRtpCapabilities() below
-// //       routerRtpCapabilities: rtpCapabilities
-// //     })
-
-// //     console.log('RTP Capabilities', device.rtpCapabilities)
-
-// //   } catch (error) {
-// //     console.log(error)
-// //     if (error.name === 'UnsupportedError')
-// //       console.warn('browser not supported')
-// //   }
-// // }
-
-// // const getRtpCapabilities = () => {
-// //   // make a request to the server for Router RTP Capabilities
-// //   // see server's socket.on('getRtpCapabilities', ...)
-// //   // the server sends back data object which contains rtpCapabilities
-// //   socket.emit('getRtpCapabilities', (data) => {
-// //     console.log(`Router RTP Capabilities... ${data.rtpCapabilities}`)
-
-// //     // we assign to local variable and will be used when
-// //     // loading the client Device (see createDevice above)
-// //     rtpCapabilities = data.rtpCapabilities
-// //   })
-// // }
-
-// // const createSendTransport = () => {
-// //   // see server's socket.on('createWebRtcTransport', sender?, ...)
-// //   // this is a call from Producer, so sender = true
-// //   socket.emit('createWebRtcTransport', { sender: true }, ({ params }) => {
-// //     // The server sends back params needed 
-// //     // to create Send Transport on the client side
-// //     if (params.error) {
-// //       console.log(params.error)
-// //       return
-// //     }
-
-// //     console.log(params)
-
-// //     // creates a new WebRTC Transport to send media
-// //     // based on the server's producer transport params
-// //     // https://mediasoup.org/documentation/v3/mediasoup-client/api/#TransportOptions
-// //     producerTransport = device.createSendTransport(params)
-
-// //     // https://mediasoup.org/documentation/v3/communication-between-client-and-server/#producing-media
-// //     // this event is raised when a first call to transport.produce() is made
-// //     // see connectSendTransport() below
-// //     producerTransport.on('connect', async ({ dtlsParameters }, callback, errback) => {
-// //       try {
-// //         // Signal local DTLS parameters to the server side transport
-// //         // see server's socket.on('transport-connect', ...)
-// //         await socket.emit('transport-connect', {
-// //           dtlsParameters,
-// //         })
-
-// //         // Tell the transport that parameters were transmitted.
-// //         callback()
-
-// //       } catch (error) {
-// //         errback(error)
-// //       }
-// //     })
-
-// //     producerTransport.on('produce', async (parameters, callback, errback) => {
-// //       console.log(parameters)
-
-// //       try {
-// //         // tell the server to create a Producer
-// //         // with the following parameters and produce
-// //         // and expect back a server side producer id
-// //         // see server's socket.on('transport-produce', ...)
-// //         await socket.emit('transport-produce', {
-// //           kind: parameters.kind,
-// //           rtpParameters: parameters.rtpParameters,
-// //           appData: parameters.appData,
-// //         }, ({ id }) => {
-// //           // Tell the transport that parameters were transmitted and provide it with the
-// //           // server side producer's id.
-// //           callback({ id })
-// //         })
-// //       } catch (error) {
-// //         errback(error)
-// //       }
-// //     })
-// //   })
-// // }
-
-// // const connectSendTransport = async () => {
-// //   // we now call produce() to instruct the producer transport
-// //   // to send media to the Router
-// //   // https://mediasoup.org/documentation/v3/mediasoup-client/api/#transport-produce
-// //   // this action will trigger the 'connect' and 'produce' events above
-// //   producer = await producerTransport.produce(params)
-
-// //   producer.on('trackended', () => {
-// //     console.log('track ended')
-
-// //     // close video track
-// //   })
-
-// //   producer.on('transportclose', () => {
-// //     console.log('transport ended')
-
-// //     // close video track
-// //   })
-// // }
-
-// // const createRecvTransport = async () => {
-// //   // see server's socket.on('consume', sender?, ...)
-// //   // this is a call from Consumer, so sender = false
-// //   await socket.emit('createWebRtcTransport', { sender: false }, ({ params }) => {
-// //     // The server sends back params needed 
-// //     // to create Send Transport on the client side
-// //     if (params.error) {
-// //       console.log(params.error)
-// //       return
-// //     }
-
-// //     console.log(params)
-
-// //     // creates a new WebRTC Transport to receive media
-// //     // based on server's consumer transport params
-// //     // https://mediasoup.org/documentation/v3/mediasoup-client/api/#device-createRecvTransport
-// //     consumerTransport = device.createRecvTransport(params)
-
-// //     // https://mediasoup.org/documentation/v3/communication-between-client-and-server/#producing-media
-// //     // this event is raised when a first call to transport.produce() is made
-// //     // see connectRecvTransport() below
-// //     consumerTransport.on('connect', async ({ dtlsParameters }, callback, errback) => {
-// //       try {
-// //         // Signal local DTLS parameters to the server side transport
-// //         // see server's socket.on('transport-recv-connect', ...)
-// //         await socket.emit('transport-recv-connect', {
-// //           dtlsParameters,
-// //         })
-
-// //         // Tell the transport that parameters were transmitted.
-// //         callback()
-// //       } catch (error) {
-// //         // Tell the transport that something was wrong
-// //         errback(error)
-// //       }
-// //     })
-// //   })
-// // }
-
-// // const connectRecvTransport = async () => {
-// //   // for consumer, we need to tell the server first
-// //   // to create a consumer based on the rtpCapabilities and consume
-// //   // if the router can consume, it will send back a set of params as below
-// //   await socket.emit('consume', {
-// //     rtpCapabilities: device.rtpCapabilities,
-// //   }, async ({ params }) => {
-// //     if (params.error) {
-// //       console.log('Cannot Consume')
-// //       return
-// //     }
-
-// //     console.log(params)
-// //     // then consume with the local consumer transport
-// //     // which creates a consumer
-// //     consumer = await consumerTransport.consume({
-// //       id: params.id,
-// //       producerId: params.producerId,
-// //       kind: params.kind,
-// //       rtpParameters: params.rtpParameters
-// //     })
-
-// //     // destructure and retrieve the video track from the producer
-// //     const { track } = consumer
-
-// //     remoteVideo.srcObject = new MediaStream([track])
-
-// //     // the server consumer started with media paused
-// //     // so we need to inform the server to resume
-// //     socket.emit('consumer-resume')
-// //   })
-// // }
-
-// // btnLocalVideo.addEventListener('click', getLocalStream)
-// // btnRtpCapabilities.addEventListener('click', getRtpCapabilities)
-// // btnDevice.addEventListener('click', createDevice)
-// // btnCreateSendTransport.addEventListener('click', createSendTransport)
-// // btnConnectSendTransport.addEventListener('click', connectSendTransport)
-// // btnRecvSendTransport.addEventListener('click', createRecvTransport)
-// // btnConnectRecvTransport.addEventListener('click', connectRecvTransport)
-// const io = require('socket.io-client')
-// const mediasoupClient = require('mediasoup-client')
-
-// const socket = io("/mediasoup")
-
-// socket.on('connection-success', ({ socketId }) => {
-//   console.log('Connected with socket ID:', socketId)
-// })
-
-// socket.on('disconnect', () => {
-//   console.log('Disconnected from server')
-// })
-
-// socket.on('error', (error) => {
-//   console.error('Socket error:', error)
-// })
-
-// let device
-// let rtpCapabilities
-// let producerTransport
-// let consumerTransport
-// let producer
-// let consumer
-
-// const params = {
-//   encodings: [
-//     {
-//       rid: 'r0',
-//       maxBitrate: 100000,
-//       scalabilityMode: 'S1T3',
-//     },
-//     {
-//       rid: 'r1',
-//       maxBitrate: 300000,
-//       scalabilityMode: 'S1T3',
-//     },
-//     {
-//       rid: 'r2',
-//       maxBitrate: 900000,
-//       scalabilityMode: 'S1T3',
-//     },
-//   ],
-//   codecOptions: {
-//     videoGoogleStartBitrate: 1000
-//   }
-// }
-
-// const iceServers = [
-//       { urls: 'stun:stun.l.google.com:19302' },
-//       {
-//         urls: 'turn:relay1.expressturn.com:3480',
-//         username: '000000002065332507',
-//         credential: '2dm9ltTqJIjVrRq/LI/QvTm0nPY='
-//       }
-//     ]
-
-// // DOM elements
-// const localVideo = document.getElementById('localVideo')
-// const remoteVideo = document.getElementById('remoteVideo')
-// const btnLocalVideo = document.getElementById('btnLocalVideo')
-// const btnRtpCapabilities = document.getElementById('btnRtpCapabilities')
-// const btnDevice = document.getElementById('btnDevice')
-// const btnCreateSendTransport = document.getElementById('btnCreateSendTransport')
-// const btnConnectSendTransport = document.getElementById('btnConnectSendTransport')
-// const btnRecvSendTransport = document.getElementById('btnRecvSendTransport')
-// const btnConnectRecvTransport = document.getElementById('btnConnectRecvTransport')
-
-// const streamSuccess = async (stream) => {
-//   try {
-//     localVideo.srcObject = stream
-//     const track = stream.getVideoTracks()[0]
-//     params.track = track
-//   } catch (error) {
-//     console.error('Error in streamSuccess:', error)
-//   }
-// }
-
-// const getLocalStream = () => {
-//   console.log("Getting the local stream")
-//   navigator.mediaDevices.getUserMedia({
-//     audio: false,
-//     video: {
-//       width: { min: 640, max: 1920 },
-//       height: { min: 400, max: 1080 }
-//     }
-//   })
-//   .then(streamSuccess)
-//   .catch(error => {
-//     console.error("Error accessing media devices:", error)
-//   })
-// }
-
-// const createDevice = async () => {
-//   try {
-//     if (!rtpCapabilities) {
-//       console.error('RTP capabilities not loaded')
-//       return
-//     }
-
-//     device = new mediasoupClient.Device()
-//     await device.load({ routerRtpCapabilities: rtpCapabilities })
-//     console.log('Device RTP Capabilities:', device.rtpCapabilities)
-//   } catch (error) {
-//     console.error('Device creation error:', error)
-//     if (error.name === 'UnsupportedError') {
-//       console.error('Browser not supported')
-//     }
-//   }
-// }
-
-// const getRtpCapabilities = () => {
-//   socket.emit('getRtpCapabilities', (data) => {
-//     if (data.error) {
-//       console.error('Error getting RTP capabilities:', data.error)
-//       return
-//     }
-//     console.log('Router RTP Capabilities received')
-//     rtpCapabilities = data.rtpCapabilities
-//   })
-// }
-
-// const createSendTransport = () => {
-//   return new Promise((resolve, reject) => {
-//     if (!device) {
-//       const error = 'Device not initialized';
-//       console.error(error);
-//       reject(error);
-//       return;
-//     }
-
-//     socket.emit('createWebRtcTransport', { sender: true }, (response) => {
-//       if (response.error || response.params?.error) {
-//         const error = response.error || response.params.error;
-//         console.error('Transport creation error:', error);
-//         reject(error);
-//         return;
-//       }
-
-//       console.log('Producer transport params:', response.params);
-//       producerTransport = device.createSendTransport({
-//         ...response.params,
-//         iceServers: iceServers
-//       });
-
-//       producerTransport.on('connect', async ({ dtlsParameters }, callback, errback) => {
-//         try {
-//           await socket.emit('transport-connect', { dtlsParameters });
-//           callback();
-//         } catch (error) {
-//           console.error('Transport connect error:', error);
-//           errback(error);
-//         }
-//       });
-
-//       producerTransport.on('produce', async (parameters, callback, errback) => {
-//         try {
-//           socket.emit('transport-produce', {
-//             kind: parameters.kind,
-//             rtpParameters: parameters.rtpParameters,
-//             appData: parameters.appData,
-//           }, ({ id, error }) => {
-//             if (error) {
-//               console.error('Produce error:', error);
-//               errback(error);
-//               return;
-//             }
-//             callback({ id });
-//           });
-//         } catch (error) {
-//           console.error('Produce event error:', error);
-//           errback(error);
-//         }
-//       });
-
-//       producerTransport.on('connectionstatechange', (state) => {
-//         console.log('Producer transport state:', state);
-//         if (state === 'failed') {
-//           console.error('Producer transport failed!');
-//           // Implement reconnection logic here if needed
-//         }
-//       });
-
-//       producerTransport.on('iceconnectionstatechange', (state) => {
-//         console.log('Producer ICE state:', state);
-//       });
-
-//       resolve(producerTransport);
-//     });
-//   });
-// };
-// const connectSendTransport = async () => {
-//   try {
-//     if (!producerTransport) {
-//       throw new Error('Producer transport not created');
-//     }
-
-//     if (!params.track) {
-//       throw new Error('No track available to produce');
-//     }
-
-//     producer = await producerTransport.produce(params);
-//     console.log('Producer created:', producer.id);
-
-//     producer.on('trackended', () => {
-//       console.log('Producer track ended');
-//       // Handle track ended (maybe restart or cleanup)
-//     });
-
-//     producer.on('transportclose', () => {
-//       console.log('Producer transport closed');
-//       // Handle transport close (maybe reconnect)
-//     });
-
-//     return producer;
-//   } catch (error) {
-//     console.error('Error connecting send transport:', error);
-//     throw error; // Re-throw for calling function to handle
-//   }
-// };
-
-// const createRecvTransport = () => {
-//   return new Promise((resolve, reject) => {
-//     if (!device) {
-//       const error = 'Device not initialized';
-//       console.error(error);
-//       reject(error);
-//       return;
-//     }
-
-//     socket.emit('createWebRtcTransport', { sender: false }, (response) => {
-//       if (response.error || response.params?.error) {
-//         const error = response.error || response.params.error;
-//         console.error('Consumer transport creation error:', error);
-//         reject(error);
-//         return;
-//       }
-
-//       console.log('Consumer transport params:', response.params);
-//       consumerTransport = device.createRecvTransport({
-//         ...response.params,
-//         iceServers: iceServers
-//       });
-
-//       consumerTransport.on('connect', async ({ dtlsParameters }, callback, errback) => {
-//         try {
-//           await socket.emit('transport-recv-connect', { dtlsParameters });
-//           callback();
-//         } catch (error) {
-//           console.error('Consumer transport connect error:', error);
-//           errback(error);
-//         }
-//       });
-
-//       consumerTransport.on('connectionstatechange', (state) => {
-//         console.log('Consumer transport state:', state);
-//         if (state === 'failed') {
-//           console.error('Consumer transport failed!');
-//           // Implement reconnection logic here if needed
-//         }
-//       });
-
-//       consumerTransport.on('iceconnectionstatechange', (state) => {
-//         console.log('Consumer ICE state:', state);
-//       });
-
-//       resolve(consumerTransport);
-//     });
-//   });
-// };
-
-// const connectRecvTransport = async () => {
-//   try {
-//     if (!consumerTransport) {
-//       throw new Error('Consumer transport not created');
-//     }
-
-//     if (!device?.rtpCapabilities) {
-//       throw new Error('Device capabilities not available');
-//     }
-
-//     // First get the producer ID to consume
-//     const producerId = producer?.id;
-//     if (!producerId) {
-//       throw new Error('No producer available to consume');
-//     }
-
-//     const response = await new Promise((resolve, reject) => {
-//       socket.emit('consume', {
-//         rtpCapabilities: device.rtpCapabilities,
-//         producerId: producerId // Explicitly specify which producer to consume
-//       }, (data) => {
-//         if (data.error) {
-//           reject(data.error);
-//           return;
-//         }
-//         resolve(data);
-//       });
-//     });
-
-//     console.log('Consumer params:', response.params);
-//     consumer = await consumerTransport.consume({
-//       id: response.params.id,
-//       producerId: response.params.producerId,
-//       kind: response.params.kind,
-//       rtpParameters: response.params.rtpParameters,
-//       paused: true // Start paused and resume after track is added
-//     });
-
-//     // Set up the remote video stream
-//     const { track } = consumer;
-//     if (!remoteVideo.srcObject) {
-//       remoteVideo.srcObject = new MediaStream();
-//     }
-//     remoteVideo.srcObject.addTrack(track);
-
-//     // Now resume the consumer
-//     await new Promise((resolve, reject) => {
-//       socket.emit('consumer-resume', (error) => {
-//         if (error) {
-//           reject(error);
-//           return;
-//         }
-//         resolve();
-//       });
-//     });
-
-//     console.log('Consumer created and resumed:', consumer.id);
-//     return consumer;
-//   } catch (error) {
-//     console.error('Error in connectRecvTransport:', error);
-//     throw error; // Re-throw for calling function to handle
-//   }
-// };
-
-// // Event listeners
-// btnLocalVideo.addEventListener('click', getLocalStream)
-// btnRtpCapabilities.addEventListener('click', getRtpCapabilities)
-// btnDevice.addEventListener('click', createDevice)
-// btnCreateSendTransport.addEventListener('click', createSendTransport)
-// btnConnectSendTransport.addEventListener('click', connectSendTransport)
-// btnRecvSendTransport.addEventListener('click', createRecvTransport)
-// btnConnectRecvTransport.addEventListener('click', connectRecvTransport)
-
 var io = require('socket.io-client');
 var mediasoupClient = require('mediasoup-client');
 var socket = io("/mediasoup");
@@ -35442,6 +34837,21 @@ socket.on('connection-success', function (_ref) {
 });
 socket.on('disconnect', function () {
   console.log('Disconnected from server');
+  localVideo.srcObject = null;
+  remoteVideo.srcObject = null;
+  // Reset room state
+  roomId = null;
+  device = null;
+  rtpCapabilities = null;
+  producerTransport = null;
+  consumerTransport = null;
+  producer = null;
+  consumer = null;
+  // Show room setup again
+  roomSetupDiv.style.display = 'block';
+  roomControlsDiv.style.display = 'none';
+  displayRoomCodeSpan.textContent = 'N/A';
+  copyRoomCodeButton.style.display = 'none';
 });
 socket.on('error', function (error) {
   console.error('Socket error:', error);
@@ -35452,6 +34862,7 @@ var producerTransport;
 var consumerTransport;
 var producer;
 var consumer;
+var roomId;
 var params = {
   encodings: [{
     rid: 'r0',
@@ -35476,25 +34887,23 @@ var iceServers = [{
   urls: 'stun:stun.l.google.com:19302'
 }, {
   urls: 'stun:stun1.l.google.com:19302'
-}
-// Comment out TURN server if it's not working
-// {
-//   urls: 'turn:relay1.expressturn.com:3480',
-//   username: '000000002065332507',
-//   credential: '2dm9ltTqJIjVrRq/LI/QvTm0nPY='
-// }
-];
+}, {
+  urls: 'turn:relay1.expressturn.com:3480',
+  username: '000000002065332507',
+  credential: '2dm9ltTqJIjVrRq/LI/QvTm0nPY='
+}];
 
 // DOM elements
 var localVideo = document.getElementById('localVideo');
 var remoteVideo = document.getElementById('remoteVideo');
-var btnLocalVideo = document.getElementById('btnLocalVideo');
-var btnRtpCapabilities = document.getElementById('btnRtpCapabilities');
-var btnDevice = document.getElementById('btnDevice');
-var btnCreateSendTransport = document.getElementById('btnCreateSendTransport');
-var btnConnectSendTransport = document.getElementById('btnConnectSendTransport');
-var btnRecvSendTransport = document.getElementById('btnRecvSendTransport');
-var btnConnectRecvTransport = document.getElementById('btnConnectRecvTransport');
+var btnJoinRoom = document.getElementById('btnJoinRoom');
+var btnCreateRoom = document.getElementById('btnCreateRoom');
+var roomCodeInput = document.getElementById('roomCodeInput'); // Input for joining
+var displayRoomCodeSpan = document.getElementById('displayRoomCode'); // To show created room code
+var copyRoomCodeButton = document.getElementById('copyRoomCode'); // New button to copy
+var roomSetupDiv = document.getElementById('roomSetup'); // To hide after joining/creating
+var roomControlsDiv = document.getElementById('roomControls'); // To show after joining/creating
+
 var streamSuccess = /*#__PURE__*/function () {
   var _ref2 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee(stream) {
     var track;
@@ -35518,72 +34927,99 @@ var streamSuccess = /*#__PURE__*/function () {
     return _ref2.apply(this, arguments);
   };
 }();
-var getLocalStream = function getLocalStream() {
-  console.log("Getting the local stream");
-  navigator.mediaDevices.getUserMedia({
-    audio: false,
-    video: {
-      width: {
-        min: 640,
-        max: 1920
-      },
-      height: {
-        min: 400,
-        max: 1080
-      }
-    }
-  }).then(streamSuccess)["catch"](function (error) {
-    console.error("Error accessing media devices:", error);
-  });
-};
-var createDevice = /*#__PURE__*/function () {
+var getLocalStream = /*#__PURE__*/function () {
   var _ref3 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2() {
-    var _t;
+    var stream, track, _t;
     return _regenerator().w(function (_context2) {
       while (1) switch (_context2.n) {
         case 0:
-          _context2.p = 0;
+          // Make getLocalStream async itself
+          console.log("Getting the local stream");
+          _context2.p = 1;
+          _context2.n = 2;
+          return navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: {
+              width: {
+                min: 640,
+                max: 1920
+              },
+              height: {
+                min: 400,
+                max: 1080
+              }
+            }
+          });
+        case 2:
+          stream = _context2.v;
+          track = streamSuccess(stream); // Call streamSuccess directly with the awaited stream
+          return _context2.a(2, track);
+        case 3:
+          _context2.p = 3;
+          _t = _context2.v;
+          console.error("Error accessing media devices in getLocalStream:", _t.name, _t.message, _t);
+          throw _t;
+        case 4:
+          return _context2.a(2);
+      }
+    }, _callee2, null, [[1, 3]]);
+  }));
+  return function getLocalStream() {
+    return _ref3.apply(this, arguments);
+  };
+}();
+var createDevice = /*#__PURE__*/function () {
+  var _ref4 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3() {
+    var _t2;
+    return _regenerator().w(function (_context3) {
+      while (1) switch (_context3.n) {
+        case 0:
+          _context3.p = 0;
           if (rtpCapabilities) {
-            _context2.n = 1;
+            _context3.n = 1;
             break;
           }
           console.error('RTP capabilities not loaded');
-          return _context2.a(2);
+          throw new Error('RTP capabilities not loaded');
         case 1:
           device = new mediasoupClient.Device();
-          _context2.n = 2;
+          _context3.n = 2;
           return device.load({
             routerRtpCapabilities: rtpCapabilities
           });
         case 2:
           console.log('Device created successfully');
           console.log('Device RTP Capabilities:', device.rtpCapabilities);
-          _context2.n = 4;
+          _context3.n = 4;
           break;
         case 3:
-          _context2.p = 3;
-          _t = _context2.v;
-          console.error('Device creation error:', _t);
-          if (_t.name === 'UnsupportedError') {
+          _context3.p = 3;
+          _t2 = _context3.v;
+          console.error('Device creation error:', _t2);
+          if (_t2.name === 'UnsupportedError') {
             console.error('Browser not supported');
           }
         case 4:
-          return _context2.a(2);
+          return _context3.a(2);
       }
-    }, _callee2, null, [[0, 3]]);
+    }, _callee3, null, [[0, 3]]);
   }));
   return function createDevice() {
-    return _ref3.apply(this, arguments);
+    return _ref4.apply(this, arguments);
   };
 }();
 var getRtpCapabilities = function getRtpCapabilities() {
-  socket.emit('getRtpCapabilities', function (data) {
-    if (data.error) {
-      console.error('Error getting RTP capabilities:', data.error);
-      return;
-    }
-    console.log('Router RTP Capabilities received');
-    rtpCapabilities = data.rtpCapabilities;
+  return new Promise(function (resolve, reject) {
+    socket.emit('getRtpCapabilities', function (data) {
+      if (data.error) {
+        console.error('Error getting RTP capabilities:', data.error);
+        reject(data.error);
+        return;
+      }
+      console.log('Router RTP Capabilities received');
+      rtpCapabilities = data.rtpCapabilities;
+      resolve();
+    });
   });
 };
 var createSendTransport = function createSendTransport() {
@@ -35594,8 +35030,10 @@ var createSendTransport = function createSendTransport() {
       reject(error);
       return;
     }
+    console.log(roomId);
     socket.emit('createWebRtcTransport', {
-      sender: true
+      sender: true,
+      roomId: roomId
     }, function (response) {
       var _response$params;
       if (response.error || (_response$params = response.params) !== null && _response$params !== void 0 && _response$params.error) {
@@ -35613,18 +35051,20 @@ var createSendTransport = function createSendTransport() {
 
       // Enhanced logging for debugging
       producerTransport.on('connect', /*#__PURE__*/function () {
-        var _ref5 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3(_ref4, callback, errback) {
-          var dtlsParameters, _t2;
-          return _regenerator().w(function (_context3) {
-            while (1) switch (_context3.n) {
+        var _ref6 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(_ref5, callback, errback) {
+          var dtlsParameters, _t3;
+          return _regenerator().w(function (_context4) {
+            while (1) switch (_context4.n) {
               case 0:
-                dtlsParameters = _ref4.dtlsParameters;
+                dtlsParameters = _ref5.dtlsParameters;
                 console.log('Producer transport connect event triggered');
-                _context3.p = 1;
-                _context3.n = 2;
+                _context4.p = 1;
+                _context4.n = 2;
                 return new Promise(function (resolve, reject) {
                   socket.emit('transport-connect', {
-                    dtlsParameters: dtlsParameters
+                    dtlsParameters: dtlsParameters,
+                    transportId: producerTransport.id,
+                    roomId: roomId
                   }, function (error) {
                     console.log("socket emit done");
                     if (error) {
@@ -35639,38 +35079,40 @@ var createSendTransport = function createSendTransport() {
               case 2:
                 console.log("trying to callback");
                 callback();
-                _context3.n = 4;
+                _context4.n = 4;
                 break;
               case 3:
-                _context3.p = 3;
-                _t2 = _context3.v;
-                console.error('Transport connect error:', _t2);
-                errback(_t2);
+                _context4.p = 3;
+                _t3 = _context4.v;
+                console.error('Transport connect error:', _t3);
+                errback(_t3);
               case 4:
-                return _context3.a(2);
+                return _context4.a(2);
             }
-          }, _callee3, null, [[1, 3]]);
+          }, _callee4, null, [[1, 3]]);
         }));
         return function (_x2, _x3, _x4) {
-          return _ref5.apply(this, arguments);
+          return _ref6.apply(this, arguments);
         };
       }());
       producerTransport.on('produce', /*#__PURE__*/function () {
-        var _ref6 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(parameters, callback, errback) {
-          var _t3;
-          return _regenerator().w(function (_context4) {
-            while (1) switch (_context4.n) {
+        var _ref7 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(parameters, callback, errback) {
+          var _t4;
+          return _regenerator().w(function (_context5) {
+            while (1) switch (_context5.n) {
               case 0:
                 console.log('Producer transport produce event triggered');
                 console.log("now i will try to go in the tansport produce");
-                _context4.p = 1;
+                _context5.p = 1;
                 console.log("in the try");
-                _context4.n = 2;
+                _context5.n = 2;
                 return new Promise(function (resolve, reject) {
                   socket.emit('transport-produce', {
                     kind: parameters.kind,
                     rtpParameters: parameters.rtpParameters,
-                    appData: parameters.appData
+                    appData: parameters.appData,
+                    transportId: producerTransport.id,
+                    roomId: roomId
                   }, function (response) {
                     if (response.error) {
                       console.error('Produce server error:', response.error);
@@ -35686,20 +35128,20 @@ var createSendTransport = function createSendTransport() {
                   });
                 });
               case 2:
-                _context4.n = 4;
+                _context5.n = 4;
                 break;
               case 3:
-                _context4.p = 3;
-                _t3 = _context4.v;
-                console.error('Produce event error:', _t3);
-                errback(_t3);
+                _context5.p = 3;
+                _t4 = _context5.v;
+                console.error('Produce event error:', _t4);
+                errback(_t4);
               case 4:
-                return _context4.a(2);
+                return _context5.a(2);
             }
-          }, _callee4, null, [[1, 3]]);
+          }, _callee5, null, [[1, 3]]);
         }));
         return function (_x5, _x6, _x7) {
-          return _ref6.apply(this, arguments);
+          return _ref7.apply(this, arguments);
         };
       }());
       producerTransport.on('connectionstatechange', function (state) {
@@ -35726,29 +35168,29 @@ var createSendTransport = function createSendTransport() {
   });
 };
 var connectSendTransport = /*#__PURE__*/function () {
-  var _ref7 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5() {
-    var _t4;
-    return _regenerator().w(function (_context5) {
-      while (1) switch (_context5.n) {
+  var _ref8 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6() {
+    var _t5;
+    return _regenerator().w(function (_context6) {
+      while (1) switch (_context6.n) {
         case 0:
-          _context5.p = 0;
+          _context6.p = 0;
           if (producerTransport) {
-            _context5.n = 1;
+            _context6.n = 1;
             break;
           }
           throw new Error('Producer transport not created');
         case 1:
           if (params.track) {
-            _context5.n = 2;
+            _context6.n = 2;
             break;
           }
           throw new Error('No track available to produce');
         case 2:
           console.log('Starting to produce media...');
-          _context5.n = 3;
+          _context6.n = 3;
           return producerTransport.produce(params);
         case 3:
-          producer = _context5.v;
+          producer = _context6.v;
           console.log('Producer created successfully:', producer.id);
           producer.on('trackended', function () {
             console.log('Producer track ended');
@@ -35756,19 +35198,19 @@ var connectSendTransport = /*#__PURE__*/function () {
           producer.on('transportclose', function () {
             console.log('Producer transport closed');
           });
-          return _context5.a(2, producer);
+          return _context6.a(2, producer);
         case 4:
-          _context5.p = 4;
-          _t4 = _context5.v;
-          console.error('Error connecting send transport:', _t4);
-          throw _t4;
+          _context6.p = 4;
+          _t5 = _context6.v;
+          console.error('Error connecting send transport:', _t5);
+          throw _t5;
         case 5:
-          return _context5.a(2);
+          return _context6.a(2);
       }
-    }, _callee5, null, [[0, 4]]);
+    }, _callee6, null, [[0, 4]]);
   }));
   return function connectSendTransport() {
-    return _ref7.apply(this, arguments);
+    return _ref8.apply(this, arguments);
   };
 }();
 var createRecvTransport = function createRecvTransport() {
@@ -35779,8 +35221,10 @@ var createRecvTransport = function createRecvTransport() {
       reject(error);
       return;
     }
+    console.log(roomId);
     socket.emit('createWebRtcTransport', {
-      sender: false
+      sender: false,
+      roomId: roomId
     }, function (response) {
       var _response$params2;
       if (response.error || (_response$params2 = response.params) !== null && _response$params2 !== void 0 && _response$params2.error) {
@@ -35794,18 +35238,20 @@ var createRecvTransport = function createRecvTransport() {
         iceServers: iceServers
       }));
       consumerTransport.on('connect', /*#__PURE__*/function () {
-        var _ref9 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6(_ref8, callback, errback) {
-          var dtlsParameters, _t5;
-          return _regenerator().w(function (_context6) {
-            while (1) switch (_context6.n) {
+        var _ref0 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7(_ref9, callback, errback) {
+          var dtlsParameters, _t6;
+          return _regenerator().w(function (_context7) {
+            while (1) switch (_context7.n) {
               case 0:
-                dtlsParameters = _ref8.dtlsParameters;
+                dtlsParameters = _ref9.dtlsParameters;
                 console.log('Consumer transport connect event triggered');
-                _context6.p = 1;
-                _context6.n = 2;
+                _context7.p = 1;
+                _context7.n = 2;
                 return new Promise(function (resolve, reject) {
                   socket.emit('transport-recv-connect', {
-                    dtlsParameters: dtlsParameters
+                    dtlsParameters: dtlsParameters,
+                    transportId: consumerTransport.id,
+                    roomId: roomId
                   }, function (error) {
                     if (error) {
                       console.error('Consumer transport connect server error:', error);
@@ -35818,20 +35264,20 @@ var createRecvTransport = function createRecvTransport() {
                 });
               case 2:
                 callback();
-                _context6.n = 4;
+                _context7.n = 4;
                 break;
               case 3:
-                _context6.p = 3;
-                _t5 = _context6.v;
-                console.error('Consumer transport connect error:', _t5);
-                errback(_t5);
+                _context7.p = 3;
+                _t6 = _context7.v;
+                console.error('Consumer transport connect error:', _t6);
+                errback(_t6);
               case 4:
-                return _context6.a(2);
+                return _context7.a(2);
             }
-          }, _callee6, null, [[1, 3]]);
+          }, _callee7, null, [[1, 3]]);
         }));
         return function (_x8, _x9, _x0) {
-          return _ref9.apply(this, arguments);
+          return _ref0.apply(this, arguments);
         };
       }());
       consumerTransport.on('connectionstatechange', function (state) {
@@ -35850,29 +35296,32 @@ var createRecvTransport = function createRecvTransport() {
   });
 };
 var connectRecvTransport = /*#__PURE__*/function () {
-  var _ref0 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7() {
-    var _device, response, _consumer, track, _t6;
-    return _regenerator().w(function (_context7) {
-      while (1) switch (_context7.n) {
+  var _ref1 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8(producerInfo) {
+    var _device, response, _consumer, track, _t7;
+    return _regenerator().w(function (_context8) {
+      while (1) switch (_context8.n) {
         case 0:
-          _context7.p = 0;
+          _context8.p = 0;
           if (consumerTransport) {
-            _context7.n = 1;
+            _context8.n = 1;
             break;
           }
           throw new Error('Consumer transport not created');
         case 1:
+          console.log(producerInfo);
           if ((_device = device) !== null && _device !== void 0 && _device.rtpCapabilities) {
-            _context7.n = 2;
+            _context8.n = 2;
             break;
           }
           throw new Error('Device capabilities not available');
         case 2:
           console.log('Starting to consume media...');
-          _context7.n = 3;
+          _context8.n = 3;
           return new Promise(function (resolve, reject) {
             socket.emit('consume', {
-              rtpCapabilities: device.rtpCapabilities
+              producerId: producerInfo.producerId,
+              rtpCapabilities: device.rtpCapabilities,
+              roomId: roomId
             }, function (data) {
               if (data.error) {
                 reject(data.error);
@@ -35882,9 +35331,9 @@ var connectRecvTransport = /*#__PURE__*/function () {
             });
           });
         case 3:
-          response = _context7.v;
+          response = _context8.v;
           console.log('Consumer params:', response.params);
-          _context7.n = 4;
+          _context8.n = 4;
           return consumerTransport.consume({
             id: response.params.id,
             producerId: response.params.producerId,
@@ -35893,50 +35342,290 @@ var connectRecvTransport = /*#__PURE__*/function () {
             paused: true
           });
         case 4:
-          consumer = _context7.v;
+          consumer = _context8.v;
+          console.log("trying to add the remote video");
           // Set up the remote video stream
           _consumer = consumer, track = _consumer.track;
           if (!remoteVideo.srcObject) {
             remoteVideo.srcObject = new MediaStream();
           }
           remoteVideo.srcObject.addTrack(track);
-
+          console.log("remote video set successfully");
           // Resume the consumer
-          _context7.n = 5;
+          _context8.n = 5;
           return new Promise(function (resolve, reject) {
-            socket.emit('consumer-resume', function (error) {
+            // Correct way to emit with data and an acknowledgment callback
+            socket.emit('consumer-resume', {
+              consumerId: consumer.id,
+              roomId: roomId
+            }, function (error) {
               if (error) {
+                console.error('Consumer resume server error:', error); // More specific logging
                 reject(error);
                 return;
               }
+              console.log('Consumer resume server success'); // Log success
               resolve();
             });
           });
         case 5:
           console.log('Consumer created and resumed successfully:', consumer.id);
-          return _context7.a(2, consumer);
+          return _context8.a(2, consumer);
         case 6:
-          _context7.p = 6;
-          _t6 = _context7.v;
-          console.error('Error in connectRecvTransport:', _t6);
-          throw _t6;
+          _context8.p = 6;
+          _t7 = _context8.v;
+          console.error('Error in connectRecvTransport:', _t7);
+          throw _t7;
         case 7:
-          return _context7.a(2);
+          return _context8.a(2);
       }
-    }, _callee7, null, [[0, 6]]);
+    }, _callee8, null, [[0, 6]]);
   }));
-  return function connectRecvTransport() {
-    return _ref0.apply(this, arguments);
+  return function connectRecvTransport(_x1) {
+    return _ref1.apply(this, arguments);
   };
 }();
+var setupMediasoupPipeline = /*#__PURE__*/function () {
+  var _ref10 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9() {
+    var _t8;
+    return _regenerator().w(function (_context9) {
+      while (1) switch (_context9.n) {
+        case 0:
+          _context9.p = 0;
+          _context9.n = 1;
+          return getLocalStream();
+        case 1:
+          _context9.n = 2;
+          return getRtpCapabilities();
+        case 2:
+          _context9.n = 3;
+          return createDevice();
+        case 3:
+          _context9.n = 4;
+          return createSendTransport();
+        case 4:
+          _context9.n = 5;
+          return connectSendTransport();
+        case 5:
+          _context9.n = 6;
+          return createRecvTransport();
+        case 6:
+          // We'll consume producers as they become available in the room
+          console.log('Mediasoup pipeline initialized.');
+          roomSetupDiv.style.display = 'none'; // Hide room setup controls
+          roomControlsDiv.style.display = 'block'; // Show video elements and call buttons
+          _context9.n = 8;
+          break;
+        case 7:
+          _context9.p = 7;
+          _t8 = _context9.v;
+          console.error('Error setting up Mediasoup pipeline:', _t8);
+          alert('Failed to set up video call. See console for details.');
+          // Potentially disable UI elements or show error to user
+        case 8:
+          return _context9.a(2);
+      }
+    }, _callee9, null, [[0, 7]]);
+  }));
+  return function setupMediasoupPipeline() {
+    return _ref10.apply(this, arguments);
+  };
+}();
+var CreateRoom = /*#__PURE__*/function () {
+  var _ref11 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0() {
+    return _regenerator().w(function (_context0) {
+      while (1) switch (_context0.n) {
+        case 0:
+          try {
+            // Request the server to create a room and get a unique ID
+            socket.emit('createRoom', function (response) {
+              if (response.error) {
+                console.error('Error creating room:', response.error);
+                alert('Failed to create room: ' + response.error);
+                return;
+              }
+              roomId = response.roomId;
+              console.log('Room created with ID:', roomId);
+              displayRoomCodeSpan.textContent = roomId; // Display the room code to the user
+              copyRoomCodeButton.style.display = 'inline-block'; // Show copy button
 
-// Event listeners
-btnLocalVideo.addEventListener('click', getLocalStream);
-btnRtpCapabilities.addEventListener('click', getRtpCapabilities);
-btnDevice.addEventListener('click', createDevice);
-btnCreateSendTransport.addEventListener('click', createSendTransport);
-btnConnectSendTransport.addEventListener('click', connectSendTransport);
-btnRecvSendTransport.addEventListener('click', createRecvTransport);
-btnConnectRecvTransport.addEventListener('click', connectRecvTransport);
+              setupMediasoupPipeline();
+            });
+          } catch (error) {
+            console.error('Error in CreateRoom:', error);
+          }
+        case 1:
+          return _context0.a(2);
+      }
+    }, _callee0);
+  }));
+  return function CreateRoom() {
+    return _ref11.apply(this, arguments);
+  };
+}();
+var JoinRoom = /*#__PURE__*/function () {
+  var _ref12 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10() {
+    var enteredRoomId;
+    return _regenerator().w(function (_context10) {
+      while (1) switch (_context10.n) {
+        case 0:
+          enteredRoomId = roomCodeInput.value.trim();
+          if (enteredRoomId) {
+            _context10.n = 1;
+            break;
+          }
+          alert('Please enter a room code.');
+          return _context10.a(2);
+        case 1:
+          roomId = enteredRoomId;
+          try {
+            // Inform the server about joining a room
+            socket.emit('joinRoom', {
+              roomId: roomId
+            }, /*#__PURE__*/function () {
+              var _ref13 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(response) {
+                return _regenerator().w(function (_context1) {
+                  while (1) switch (_context1.n) {
+                    case 0:
+                      if (!response.error) {
+                        _context1.n = 1;
+                        break;
+                      }
+                      console.error('Error joining room:', response.error);
+                      alert('Failed to join room: ' + response.error);
+                      return _context1.a(2);
+                    case 1:
+                      console.log('Successfully joined room:', roomId);
+                      displayRoomCodeSpan.textContent = roomId; // Also display for joiners
+                      copyRoomCodeButton.style.display = 'inline-block'; // Show copy button
+
+                      // Now, set up Mediasoup pipeline
+                      _context1.n = 2;
+                      return setupMediasoupPipeline();
+                    case 2:
+                      // After joining, we need to request existing producers in the room
+                      requestExistingProducers();
+                    case 3:
+                      return _context1.a(2);
+                  }
+                }, _callee1);
+              }));
+              return function (_x10) {
+                return _ref13.apply(this, arguments);
+              };
+            }());
+          } catch (error) {
+            console.error('Error in JoinRoom:', error);
+          }
+        case 2:
+          return _context10.a(2);
+      }
+    }, _callee10);
+  }));
+  return function JoinRoom() {
+    return _ref12.apply(this, arguments);
+  };
+}();
+var requestExistingProducers = function requestExistingProducers() {
+  console.log("trying to get the producers in the room");
+  socket.emit('getProducersInRoom', {
+    roomId: roomId
+  }, function (response) {
+    if (response.error) {
+      console.error('Error getting producers in room:', response.error);
+      return;
+    }
+    console.log('Existing producers in room:', response.producerIds);
+    response.producerIds.forEach(/*#__PURE__*/function () {
+      var _ref14 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11(producerId) {
+        var _producer;
+        return _regenerator().w(function (_context11) {
+          while (1) switch (_context11.n) {
+            case 0:
+              if (producerId !== ((_producer = producer) === null || _producer === void 0 ? void 0 : _producer.id)) {
+                // Don't consume our own producer
+                // Request server for consumer parameters for this producer
+                socket.emit('consume', {
+                  producerId: producerId,
+                  rtpCapabilities: device.rtpCapabilities,
+                  roomId: roomId
+                }, function (consumerResponse) {
+                  if (consumerResponse.error) {
+                    console.error('Error creating consumer for existing producer:', consumerResponse.error);
+                    return;
+                  }
+                  console.log('Consumer response for existing producer:', consumerResponse.params);
+                  connectRecvTransport(consumerResponse.params); // Use the data from the server
+                });
+              }
+            case 1:
+              return _context11.a(2);
+          }
+        }, _callee11);
+      }));
+      return function (_x11) {
+        return _ref14.apply(this, arguments);
+      };
+    }());
+  });
+};
+
+// Listener for new producers in the room (from other participants)
+socket.on('newProducer', function (data) {
+  var _producer2;
+  console.log('New producer announced:', data);
+  if (data.producerId && data.producerId !== ((_producer2 = producer) === null || _producer2 === void 0 ? void 0 : _producer2.id)) {
+    // Don't consume our own producer
+    // Request server for consumer parameters for this new producer
+    socket.emit('consume', {
+      producerId: data.producerId,
+      rtpCapabilities: device.rtpCapabilities,
+      roomId: roomId
+    }, function (consumerResponse) {
+      if (consumerResponse.error) {
+        console.error('Error creating consumer for new producer:', consumerResponse.error);
+        return;
+      }
+      console.log('Consumer response for new producer:', consumerResponse.params);
+      connectRecvTransport(consumerResponse.params);
+    });
+  }
+});
+
+// Listener for producers removed from the room
+socket.on('producerRemoved', function (_ref15) {
+  var producerId = _ref15.producerId;
+  console.log('Producer removed:', producerId);
+  // You would typically find the corresponding remote video element and remove it
+  // For simplicity, we are only supporting one remote video in this example.
+  // In a multi-party scenario, you'd need to map producerIds to specific video elements.
+  if (consumer && consumer.producerId === producerId) {
+    console.log('Our consumed producer was removed. Cleaning up remote video.');
+    consumer.close();
+    consumer = null;
+    remoteVideo.srcObject = null; // Clear the remote video
+  }
+});
+
+// --- UI Event Listeners ---
+btnJoinRoom.addEventListener('click', JoinRoom);
+btnCreateRoom.addEventListener('click', CreateRoom);
+copyRoomCodeButton.addEventListener('click', function () {
+  var roomCode = displayRoomCodeSpan.textContent;
+  if (roomCode) {
+    navigator.clipboard.writeText(roomCode).then(function () {
+      alert('Room code copied to clipboard!');
+    })["catch"](function (err) {
+      console.error('Failed to copy room code: ', err);
+      alert('Failed to copy room code. Please copy manually: ' + roomCode);
+    });
+  }
+});
+
+// Hide video controls and copy button initially
+document.addEventListener('DOMContentLoaded', function () {
+  roomControlsDiv.style.display = 'none';
+  copyRoomCodeButton.style.display = 'none';
+});
 
 },{"mediasoup-client":67,"socket.io-client":80}]},{},[114]);
