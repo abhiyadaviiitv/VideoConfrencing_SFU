@@ -34835,18 +34835,32 @@ socket.on('connection-success', function (_ref) {
   var socketId = _ref.socketId;
   console.log('Connected with socket ID:', socketId);
 });
+var device;
+var rtpCapabilities;
+var producerTransport;
+var consumerTransport;
+var videoProducer;
+var audioProducer;
+var roomId;
+var consumers = new Map();
 socket.on('disconnect', function () {
   console.log('Disconnected from server');
   localVideo.srcObject = null;
-  remoteVideo.srcObject = null;
+  remoteVideos.srcObject = null;
   // Reset room state
   roomId = null;
   device = null;
   rtpCapabilities = null;
   producerTransport = null;
   consumerTransport = null;
-  producer = null;
-  consumer = null;
+  videoProducer = null;
+  audioProducer = null;
+  //consumer = null;
+  consumers.forEach(function (_ref2) {
+    var consumer = _ref2.consumer;
+    return consumer === null || consumer === void 0 ? void 0 : consumer.close();
+  });
+  consumers.clear();
   // Show room setup again
   roomSetupDiv.style.display = 'block';
   roomControlsDiv.style.display = 'none';
@@ -34856,14 +34870,7 @@ socket.on('disconnect', function () {
 socket.on('error', function (error) {
   console.error('Socket error:', error);
 });
-var device;
-var rtpCapabilities;
-var producerTransport;
-var consumerTransport;
-var producer;
-var consumer;
-var roomId;
-var params = {
+var videoparams = {
   encodings: [{
     rid: 'r0',
     maxBitrate: 100000,
@@ -34881,6 +34888,23 @@ var params = {
     videoGoogleStartBitrate: 1000
   }
 };
+var audioParams = {
+  track: null,
+  // will be filled with stream.getAudioTracks()[0]
+  codecOptions: {
+    opusStereo: false,
+    // mono keeps bit-rate low
+    opusFec: true,
+    // forward-error-correction for packet-loss
+    opusDtx: true,
+    // silent-period suppression make it false for now
+    opusMaxPlaybackRate: 48000,
+    opusPtime: 20
+  },
+  encodings: [{
+    maxBitrate: 64000 // 64 kbps is crisp for speech
+  }]
+};
 
 // ICE servers configuration - make sure these work
 var iceServers = [{
@@ -34895,7 +34919,7 @@ var iceServers = [{
 
 // DOM elements
 var localVideo = document.getElementById('localVideo');
-var remoteVideo = document.getElementById('remoteVideo');
+var remoteVideos = document.getElementById('remoteVideos');
 var btnJoinRoom = document.getElementById('btnJoinRoom');
 var btnCreateRoom = document.getElementById('btnCreateRoom');
 var roomCodeInput = document.getElementById('roomCodeInput'); // Input for joining
@@ -34904,16 +34928,45 @@ var copyRoomCodeButton = document.getElementById('copyRoomCode'); // New button 
 var roomSetupDiv = document.getElementById('roomSetup'); // To hide after joining/creating
 var roomControlsDiv = document.getElementById('roomControls'); // To show after joining/creating
 
+function addRemoteMedia(producerId, track, kind) {
+  if (consumers.has(producerId)) return;
+  var el;
+  if (kind === 'audio') {
+    el = document.createElement('audio');
+    el.controls = false;
+    el.muted = false;
+  } else {
+    el = document.createElement('video');
+    el.playsInline = true;
+  }
+  el.autoplay = true;
+  el.srcObject = new MediaStream([track]);
+  document.getElementById(kind === 'audio' ? 'remoteAudios' : 'remoteVideos').appendChild(el);
+  consumers.set(producerId, {
+    el: el,
+    consumer: null
+  });
+}
+function removeRemoteMedia(producerId) {
+  var _entry$consumer;
+  var entry = consumers.get(producerId);
+  if (!entry) return;
+  entry.el.remove();
+  (_entry$consumer = entry.consumer) === null || _entry$consumer === void 0 ? void 0 : _entry$consumer.close();
+  consumers["delete"](producerId);
+}
 var streamSuccess = /*#__PURE__*/function () {
-  var _ref2 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee(stream) {
-    var track;
+  var _ref3 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee(stream) {
+    var videotrack, audiotrack;
     return _regenerator().w(function (_context) {
       while (1) switch (_context.n) {
         case 0:
           try {
             localVideo.srcObject = stream;
-            track = stream.getVideoTracks()[0];
-            params.track = track;
+            videotrack = stream.getVideoTracks()[0];
+            audiotrack = stream.getAudioTracks()[0];
+            videoparams.track = videotrack;
+            audioParams.track = audiotrack;
             console.log('Local stream set successfully');
           } catch (error) {
             console.error('Error in streamSuccess:', error);
@@ -34924,12 +34977,12 @@ var streamSuccess = /*#__PURE__*/function () {
     }, _callee);
   }));
   return function streamSuccess(_x) {
-    return _ref2.apply(this, arguments);
+    return _ref3.apply(this, arguments);
   };
 }();
 var getLocalStream = /*#__PURE__*/function () {
-  var _ref3 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2() {
-    var stream, track, _t;
+  var _ref4 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2() {
+    var stream, _t;
     return _regenerator().w(function (_context2) {
       while (1) switch (_context2.n) {
         case 0:
@@ -34952,8 +35005,10 @@ var getLocalStream = /*#__PURE__*/function () {
           });
         case 2:
           stream = _context2.v;
-          track = streamSuccess(stream); // Call streamSuccess directly with the awaited stream
-          return _context2.a(2, track);
+          streamSuccess(stream); // Call streamSuccess directly with the awaited stream
+          // return track; // getLocalStream now returns the track
+          _context2.n = 4;
+          break;
         case 3:
           _context2.p = 3;
           _t = _context2.v;
@@ -34965,11 +35020,11 @@ var getLocalStream = /*#__PURE__*/function () {
     }, _callee2, null, [[1, 3]]);
   }));
   return function getLocalStream() {
-    return _ref3.apply(this, arguments);
+    return _ref4.apply(this, arguments);
   };
 }();
 var createDevice = /*#__PURE__*/function () {
-  var _ref4 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3() {
+  var _ref5 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3() {
     var _t2;
     return _regenerator().w(function (_context3) {
       while (1) switch (_context3.n) {
@@ -35005,7 +35060,7 @@ var createDevice = /*#__PURE__*/function () {
     }, _callee3, null, [[0, 3]]);
   }));
   return function createDevice() {
-    return _ref4.apply(this, arguments);
+    return _ref5.apply(this, arguments);
   };
 }();
 var getRtpCapabilities = function getRtpCapabilities() {
@@ -35051,12 +35106,12 @@ var createSendTransport = function createSendTransport() {
 
       // Enhanced logging for debugging
       producerTransport.on('connect', /*#__PURE__*/function () {
-        var _ref6 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(_ref5, callback, errback) {
+        var _ref7 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(_ref6, callback, errback) {
           var dtlsParameters, _t3;
           return _regenerator().w(function (_context4) {
             while (1) switch (_context4.n) {
               case 0:
-                dtlsParameters = _ref5.dtlsParameters;
+                dtlsParameters = _ref6.dtlsParameters;
                 console.log('Producer transport connect event triggered');
                 _context4.p = 1;
                 _context4.n = 2;
@@ -35092,11 +35147,11 @@ var createSendTransport = function createSendTransport() {
           }, _callee4, null, [[1, 3]]);
         }));
         return function (_x2, _x3, _x4) {
-          return _ref6.apply(this, arguments);
+          return _ref7.apply(this, arguments);
         };
       }());
       producerTransport.on('produce', /*#__PURE__*/function () {
-        var _ref7 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(parameters, callback, errback) {
+        var _ref8 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(parameters, callback, errback) {
           var _t4;
           return _regenerator().w(function (_context5) {
             while (1) switch (_context5.n) {
@@ -35141,7 +35196,7 @@ var createSendTransport = function createSendTransport() {
           }, _callee5, null, [[1, 3]]);
         }));
         return function (_x5, _x6, _x7) {
-          return _ref7.apply(this, arguments);
+          return _ref8.apply(this, arguments);
         };
       }());
       producerTransport.on('connectionstatechange', function (state) {
@@ -35168,7 +35223,7 @@ var createSendTransport = function createSendTransport() {
   });
 };
 var connectSendTransport = /*#__PURE__*/function () {
-  var _ref8 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6() {
+  var _ref9 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6() {
     var _t5;
     return _regenerator().w(function (_context6) {
       while (1) switch (_context6.n) {
@@ -35180,37 +35235,74 @@ var connectSendTransport = /*#__PURE__*/function () {
           }
           throw new Error('Producer transport not created');
         case 1:
-          if (params.track) {
+          if (videoparams.track) {
             _context6.n = 2;
             break;
           }
-          throw new Error('No track available to produce');
+          throw new Error('No video track available');
         case 2:
-          console.log('Starting to produce media...');
+          // 1. VIDEO
+          console.log('Starting to produce video...');
           _context6.n = 3;
-          return producerTransport.produce(params);
+          return producerTransport.produce(_objectSpread(_objectSpread({
+            track: videoparams.track
+          }, videoparams), {}, {
+            // encodings / codecOptions
+            kind: 'video'
+          }));
         case 3:
-          producer = _context6.v;
-          console.log('Producer created successfully:', producer.id);
-          producer.on('trackended', function () {
-            console.log('Producer track ended');
+          videoProducer = _context6.v;
+          console.log('videoProducer created successfully:', videoProducer.id);
+          videoProducer.on('trackended', function () {
+            var _videoProducer;
+            console.log('Video track ended');
+            (_videoProducer = videoProducer) === null || _videoProducer === void 0 ? void 0 : _videoProducer.close(); // clean up
           });
-          producer.on('transportclose', function () {
-            console.log('Producer transport closed');
+          videoProducer.on('transportclose', function () {
+            console.log('Video producer transport closed');
+            videoProducer = null;
           });
-          return _context6.a(2, producer);
+
+          // 2. AUDIO
+          console.log('Starting to produce audio...');
+          if (!audioParams.track) {
+            _context6.n = 5;
+            break;
+          }
+          _context6.n = 4;
+          return producerTransport.produce(_objectSpread(_objectSpread({
+            track: audioParams.track
+          }, audioParams), {}, {
+            kind: 'audio'
+          }));
         case 4:
-          _context6.p = 4;
-          _t5 = _context6.v;
-          console.error('Error connecting send transport:', _t5);
-          throw _t5;
+          audioProducer = _context6.v;
         case 5:
+          console.log('audioProducer created successfully:', audioProducer.id);
+          audioProducer.on('trackended', function () {
+            var _audioProducer;
+            console.log('Audio track ended');
+            (_audioProducer = audioProducer) === null || _audioProducer === void 0 ? void 0 : _audioProducer.close();
+          });
+          audioProducer.on('transportclose', function () {
+            console.log('Audio producer transport closed');
+            audioProducer = null;
+          });
+          console.log('Produced video & audio:', !!videoProducer, !!audioProducer);
+          _context6.n = 7;
+          break;
+        case 6:
+          _context6.p = 6;
+          _t5 = _context6.v;
+          console.error('Error in connectSendTransport:', _t5);
+          throw _t5;
+        case 7:
           return _context6.a(2);
       }
-    }, _callee6, null, [[0, 4]]);
+    }, _callee6, null, [[0, 6]]);
   }));
   return function connectSendTransport() {
-    return _ref8.apply(this, arguments);
+    return _ref9.apply(this, arguments);
   };
 }();
 var createRecvTransport = function createRecvTransport() {
@@ -35238,12 +35330,12 @@ var createRecvTransport = function createRecvTransport() {
         iceServers: iceServers
       }));
       consumerTransport.on('connect', /*#__PURE__*/function () {
-        var _ref0 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7(_ref9, callback, errback) {
+        var _ref1 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7(_ref0, callback, errback) {
           var dtlsParameters, _t6;
           return _regenerator().w(function (_context7) {
             while (1) switch (_context7.n) {
               case 0:
-                dtlsParameters = _ref9.dtlsParameters;
+                dtlsParameters = _ref0.dtlsParameters;
                 console.log('Consumer transport connect event triggered');
                 _context7.p = 1;
                 _context7.n = 2;
@@ -35277,7 +35369,7 @@ var createRecvTransport = function createRecvTransport() {
           }, _callee7, null, [[1, 3]]);
         }));
         return function (_x8, _x9, _x0) {
-          return _ref0.apply(this, arguments);
+          return _ref1.apply(this, arguments);
         };
       }());
       consumerTransport.on('connectionstatechange', function (state) {
@@ -35295,9 +35387,12 @@ var createRecvTransport = function createRecvTransport() {
     });
   });
 };
+
+// consumers = new Map();   // already defined at top-level scope
+
 var connectRecvTransport = /*#__PURE__*/function () {
-  var _ref1 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8(producerInfo) {
-    var _device, response, _consumer, track, _t7;
+  var _ref10 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8(producerInfo) {
+    var _device, _yield$Promise, params, consumer, _t7;
     return _regenerator().w(function (_context8) {
       while (1) switch (_context8.n) {
         case 0:
@@ -35308,14 +35403,15 @@ var connectRecvTransport = /*#__PURE__*/function () {
           }
           throw new Error('Consumer transport not created');
         case 1:
-          console.log(producerInfo);
           if ((_device = device) !== null && _device !== void 0 && _device.rtpCapabilities) {
             _context8.n = 2;
             break;
           }
           throw new Error('Device capabilities not available');
         case 2:
-          console.log('Starting to consume media...');
+          console.log('Starting to consume media...', producerInfo);
+
+          // 1. Ask server for consume params
           _context8.n = 3;
           return new Promise(function (resolve, reject) {
             socket.emit('consume', {
@@ -35323,58 +35419,41 @@ var connectRecvTransport = /*#__PURE__*/function () {
               rtpCapabilities: device.rtpCapabilities,
               roomId: roomId
             }, function (data) {
-              if (data.error) {
-                reject(data.error);
-                return;
-              }
-              resolve(data);
+              if (data.error) reject(data.error);else resolve(data);
             });
           });
         case 3:
-          response = _context8.v;
-          console.log('Consumer params:', response.params);
+          _yield$Promise = _context8.v;
+          params = _yield$Promise.params;
           _context8.n = 4;
           return consumerTransport.consume({
-            id: response.params.id,
-            producerId: response.params.producerId,
-            kind: response.params.kind,
-            rtpParameters: response.params.rtpParameters,
+            id: params.id,
+            producerId: params.producerId,
+            kind: params.kind,
+            rtpParameters: params.rtpParameters,
             paused: true
           });
         case 4:
           consumer = _context8.v;
-          console.log("trying to add the remote video");
-          // Set up the remote video stream
-          _consumer = consumer, track = _consumer.track;
-          if (!remoteVideo.srcObject) {
-            remoteVideo.srcObject = new MediaStream();
-          }
-          remoteVideo.srcObject.addTrack(track);
-          console.log("remote video set successfully");
-          // Resume the consumer
+          addRemoteMedia(params.producerId, consumer.track, params.kind);
+
+          // 5. Resume on server
           _context8.n = 5;
           return new Promise(function (resolve, reject) {
-            // Correct way to emit with data and an acknowledgment callback
             socket.emit('consumer-resume', {
               consumerId: consumer.id,
               roomId: roomId
             }, function (error) {
-              if (error) {
-                console.error('Consumer resume server error:', error); // More specific logging
-                reject(error);
-                return;
-              }
-              console.log('Consumer resume server success'); // Log success
-              resolve();
+              if (error) reject(error);else resolve();
             });
           });
         case 5:
-          console.log('Consumer created and resumed successfully:', consumer.id);
+          console.log('Consumer created & resumed:', consumer.id);
           return _context8.a(2, consumer);
         case 6:
           _context8.p = 6;
           _t7 = _context8.v;
-          console.error('Error in connectRecvTransport:', _t7);
+          console.error('connectRecvTransport error:', _t7);
           throw _t7;
         case 7:
           return _context8.a(2);
@@ -35382,11 +35461,11 @@ var connectRecvTransport = /*#__PURE__*/function () {
     }, _callee8, null, [[0, 6]]);
   }));
   return function connectRecvTransport(_x1) {
-    return _ref1.apply(this, arguments);
+    return _ref10.apply(this, arguments);
   };
 }();
 var setupMediasoupPipeline = /*#__PURE__*/function () {
-  var _ref10 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9() {
+  var _ref11 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9() {
     var _t8;
     return _regenerator().w(function (_context9) {
       while (1) switch (_context9.n) {
@@ -35428,11 +35507,11 @@ var setupMediasoupPipeline = /*#__PURE__*/function () {
     }, _callee9, null, [[0, 7]]);
   }));
   return function setupMediasoupPipeline() {
-    return _ref10.apply(this, arguments);
+    return _ref11.apply(this, arguments);
   };
 }();
 var CreateRoom = /*#__PURE__*/function () {
-  var _ref11 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0() {
+  var _ref12 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0() {
     return _regenerator().w(function (_context0) {
       while (1) switch (_context0.n) {
         case 0:
@@ -35460,11 +35539,11 @@ var CreateRoom = /*#__PURE__*/function () {
     }, _callee0);
   }));
   return function CreateRoom() {
-    return _ref11.apply(this, arguments);
+    return _ref12.apply(this, arguments);
   };
 }();
 var JoinRoom = /*#__PURE__*/function () {
-  var _ref12 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10() {
+  var _ref13 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10() {
     var enteredRoomId;
     return _regenerator().w(function (_context10) {
       while (1) switch (_context10.n) {
@@ -35483,7 +35562,7 @@ var JoinRoom = /*#__PURE__*/function () {
             socket.emit('joinRoom', {
               roomId: roomId
             }, /*#__PURE__*/function () {
-              var _ref13 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(response) {
+              var _ref14 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(response) {
                 return _regenerator().w(function (_context1) {
                   while (1) switch (_context1.n) {
                     case 0:
@@ -35511,7 +35590,7 @@ var JoinRoom = /*#__PURE__*/function () {
                 }, _callee1);
               }));
               return function (_x10) {
-                return _ref13.apply(this, arguments);
+                return _ref14.apply(this, arguments);
               };
             }());
           } catch (error) {
@@ -35523,11 +35602,13 @@ var JoinRoom = /*#__PURE__*/function () {
     }, _callee10);
   }));
   return function JoinRoom() {
-    return _ref12.apply(this, arguments);
+    return _ref13.apply(this, arguments);
   };
 }();
 var requestExistingProducers = function requestExistingProducers() {
+  var _videoProducer2, _audioProducer2;
   console.log("trying to get the producers in the room");
+  var myPids = [(_videoProducer2 = videoProducer) === null || _videoProducer2 === void 0 ? void 0 : _videoProducer2.id, (_audioProducer2 = audioProducer) === null || _audioProducer2 === void 0 ? void 0 : _audioProducer2.id].filter(Boolean);
   socket.emit('getProducersInRoom', {
     roomId: roomId
   }, function (response) {
@@ -35537,12 +35618,11 @@ var requestExistingProducers = function requestExistingProducers() {
     }
     console.log('Existing producers in room:', response.producerIds);
     response.producerIds.forEach(/*#__PURE__*/function () {
-      var _ref14 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11(producerId) {
-        var _producer;
+      var _ref15 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11(producerId) {
         return _regenerator().w(function (_context11) {
           while (1) switch (_context11.n) {
             case 0:
-              if (producerId !== ((_producer = producer) === null || _producer === void 0 ? void 0 : _producer.id)) {
+              if (!myPids.includes(producerId)) {
                 // Don't consume our own producer
                 // Request server for consumer parameters for this producer
                 socket.emit('consume', {
@@ -35564,7 +35644,7 @@ var requestExistingProducers = function requestExistingProducers() {
         }, _callee11);
       }));
       return function (_x11) {
-        return _ref14.apply(this, arguments);
+        return _ref15.apply(this, arguments);
       };
     }());
   });
@@ -35572,9 +35652,10 @@ var requestExistingProducers = function requestExistingProducers() {
 
 // Listener for new producers in the room (from other participants)
 socket.on('newProducer', function (data) {
-  var _producer2;
+  var _videoProducer3, _audioProducer3;
   console.log('New producer announced:', data);
-  if (data.producerId && data.producerId !== ((_producer2 = producer) === null || _producer2 === void 0 ? void 0 : _producer2.id)) {
+  var myPids = [(_videoProducer3 = videoProducer) === null || _videoProducer3 === void 0 ? void 0 : _videoProducer3.id, (_audioProducer3 = audioProducer) === null || _audioProducer3 === void 0 ? void 0 : _audioProducer3.id].filter(Boolean);
+  if (data.producerId && !myPids.includes(data.producerId)) {
     // Don't consume our own producer
     // Request server for consumer parameters for this new producer
     socket.emit('consume', {
@@ -35593,18 +35674,10 @@ socket.on('newProducer', function (data) {
 });
 
 // Listener for producers removed from the room
-socket.on('producerRemoved', function (_ref15) {
-  var producerId = _ref15.producerId;
-  console.log('Producer removed:', producerId);
-  // You would typically find the corresponding remote video element and remove it
-  // For simplicity, we are only supporting one remote video in this example.
-  // In a multi-party scenario, you'd need to map producerIds to specific video elements.
-  if (consumer && consumer.producerId === producerId) {
-    console.log('Our consumed producer was removed. Cleaning up remote video.');
-    consumer.close();
-    consumer = null;
-    remoteVideo.srcObject = null; // Clear the remote video
-  }
+socket.on('producerClosed', function (_ref16) {
+  var producerId = _ref16.producerId;
+  console.log('Producer closed:', producerId);
+  removeRemoteMedia(producerId);
 });
 
 // --- UI Event Listeners ---

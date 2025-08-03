@@ -33,10 +33,8 @@ const rooms = {};
 // Mediasoup variables
 let worker
 let router
-let producerTransport
-let consumerTransport
-let producer
-let consumer
+
+
 
 const mediaCodecs = [
   {
@@ -162,44 +160,55 @@ peers.on('connection', async (socket) => {
   }
 
   socket.emit('connection-success', { socketId: socket.id })
+socket.on('disconnect', () => {
+  console.log(`Client disconnected: ${socket.id}`);
 
-  socket.on('disconnect', () => {
-        console.log(`Client disconnected: ${socket.id}`);
-        // Clean up resources associated with this socket in all rooms
-        for (const roomId in rooms) {
-            const room = rooms[roomId];
-            if (room.transports[socket.id]) {
-                room.transports[socket.id].producerTransport?.close();
-                room.transports[socket.id].consumerTransport?.close();
-                delete room.transports[socket.id];
-            }
-            // Close any producers this socket was responsible for
-            for (const producerId in room.producers) {
-                if (room.producers[producerId].appData.socketId === socket.id) {
-                    room.producers[producerId].close();
-                    delete room.producers[producerId];
-                    // Inform other clients in the room about producer removal
-                    peers.to(roomId).emit('producerRemoved', { producerId: producerId });
-                }
-            }
-            // Close any consumers this socket was consuming
-            for (const consumerId in room.consumers) {
-                if (room.consumers[consumerId].appData.socketId === socket.id) {
-                    room.consumers[consumerId].close();
-                    delete room.consumers[consumerId];
-                }
-            }
-            // Remove socket from the room's peer set
-            room.peers.delete(socket.id);
+  // Iterate over every room this socket might be in
+  for (const roomId in rooms) {
+    const room = rooms[roomId];
 
-            // If the room becomes empty, consider closing the router
-            if (room.peers.size === 0 && Object.keys(room.producers).length === 0) {
-                console.log(`Room ${roomId} is empty, closing router.`);
-                room.router.close();
-                delete rooms[roomId];
-            }
-        }
-    });
+    /* 1. Close and clean transports owned by this socket */
+    if (room.transports[socket.id]) {
+      room.transports[socket.id].producerTransport?.close();
+      room.transports[socket.id].consumerTransport?.close();
+      delete room.transports[socket.id];
+    }
+
+    /* 2. Close every producer this socket published */
+    for (const producerId of Object.keys(room.producers)) {
+      const producer = room.producers[producerId];
+
+      if (producer.appData.socketId === socket.id) {
+        // 2a. Notify all other peers BEFORE closing
+        socket.to(roomId).emit('producerClosed', { producerId });
+
+        // 2b. Actually close the producer
+        producer.close();
+        delete room.producers[producerId];
+      }
+    }
+
+    /* 3. Close every consumer this socket was using */
+    for (const consumerId of Object.keys(room.consumers)) {
+      const consumer = room.consumers[consumerId];
+
+      if (consumer.appData.socketId === socket.id) {
+        consumer.close();
+        delete room.consumers[consumerId];
+      }
+    }
+
+    /* 4. Remove this socket from the room peer list */
+    room.peers.delete(socket.id);
+
+    /* 5. If the room is now empty, tear it down */
+    if (room.peers.size === 0 && Object.keys(room.producers).length === 0) {
+      console.log(`Room ${roomId} is empty – closing router.`);
+      room.router.close();
+      delete rooms[roomId];
+    }
+  }
+});
 
     // --- Room Management ---
 
@@ -358,19 +367,20 @@ peers.on('connection', async (socket) => {
                 console.log(`Producer ${producer.id} track ended for ${socket.id}`);
                 producer.close(); // Close producer if track ends
                 delete room.producers[producer.id];
-                peers.to(roomId).emit('producerRemoved', { producerId: producer.id });
+                peers.to(roomId).emit('producerClosed', { producerId: producer.id });
             });
 
             room.producers[producer.id] = producer;
             console.log(`Producer created successfully: ${producer.id} for ${socket.id}`);
+            socket.to(roomId).emit('newProducer', {
+            producerId: producer.id,
+            peerId: socket.id
+});
+
             callback({
                 id: producer.id,
                 error: null
             });
-
-            // Inform other clients in the room about the new producer
-            socket.to(roomId).emit('newProducer', { producerId: producer.id });
-
         } catch (error) {
             console.error('Produce error for', socket.id, ':', error);
             callback({
@@ -460,7 +470,7 @@ peers.on('connection', async (socket) => {
                 console.log(`Consumer ${consumer.id} producer closed for ${socket.id}`);
                 consumer.close();
                 delete room.consumers[consumer.id];
-                // Client side will get 'producerRemoved' from main disconnect handler or trackended on producer
+                // Client side will get 'producerClosed' from main disconnect handler or trackended on producer
             });
 
             room.consumers[consumer.id] = consumer;
@@ -504,6 +514,8 @@ peers.on('connection', async (socket) => {
             if (callback) callback(error.message);
         }
     });
+
+    
 });
 
 // Initialize mediasoup on server start

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>Mediasoup Classroom</title>
     <style>
@@ -52,32 +53,52 @@
             background-color: #6c757d;
             color: white;
             margin-left: 10px;
-            display: none; /* Hidden by default, shown by JS */
+            display: none;
+            /* Hidden by default, shown by JS */
         }
 
         #roomControls {
-            display: flex; /* Initially hidden, controlled by JS */
+            display: flex;
+            /* Initially hidden, controlled by JS */
             flex-direction: column;
             align-items: center;
             background-color: #fff;
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            width: 100%; /* Take full width of parent (body's flexbox) */
-            max-width: 700px; /* Limit max width for better layout */
+            width: 100%;
+            /* Take full width of parent (body's flexbox) */
+            max-width: 700px;
+            /* Limit max width for better layout */
         }
 
         #videoStreams {
             display: flex;
             gap: 20px;
             margin-bottom: 20px;
-            flex-wrap: wrap; /* Allow videos to wrap on smaller screens */
+            flex-wrap: wrap;
+            /* Allow videos to wrap on smaller screens */
             justify-content: center;
+        }
+
+        #remoteVideos {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 8px;
+        }
+
+        #remoteVideos video {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            object-fit: cover;
+            border-radius: 4px;
+            background: #000;
         }
 
         .video-container {
             text-align: center;
-            flex-shrink: 0; /* Prevent shrinking on smaller screens */
+            flex-shrink: 0;
+            /* Prevent shrinking on smaller screens */
         }
 
         .video {
@@ -95,6 +116,7 @@
         }
     </style>
 </head>
+
 <body>
     <h1>Mediasoup Classroom</h1>
 
@@ -116,17 +138,24 @@
         <div id="videoStreams">
             <div class="video-container">
                 <h3>Local Video</h3>
-                <video id="localVideo" autoplay playsinline muted class="video"></video> </div>
-            <div class="video-container">
-                <h3>Remote Video</h3>
-                <video id="remoteVideo" autoplay playsinline class="video"></video>
+                <video id="localVideo" autoplay playsinline muted class="video"></video>
             </div>
+            <!-- <div class="video-container">
+                <h3>Remote Video</h3>
+                <video id="remoteVideos" autoplay playsinline class="video"></video>
+            </div> -->
+            <!-- Grid for every remote participant -->
+        <div id="remoteVideos">
+            <h3>Remote Video</h3>
         </div>
+        <div id="remoteAudios" style="display: none;"></div>
         </div>
+    </div>
 
     <footer>
         <script src="/socket.io/socket.io.js"></script>
         <script src="bundle.js"></script>
     </footer>
 </body>
+
 </html>

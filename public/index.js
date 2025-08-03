@@ -7,18 +7,32 @@
     console.log('Connected with socket ID:', socketId)
   })
 
+
+  let device;
+  let rtpCapabilities;
+  let producerTransport;
+  let consumerTransport;
+  let videoProducer;
+  let audioProducer;
+  let roomId;
+  
+const consumers = new Map();
+
   socket.on('disconnect', () => {
     console.log('Disconnected from server');
     localVideo.srcObject = null;
-      remoteVideo.srcObject = null;
+      remoteVideos.srcObject = null;
       // Reset room state
       roomId = null;
       device = null;
       rtpCapabilities = null;
       producerTransport = null;
       consumerTransport = null;
-      producer = null;
-      consumer = null;
+      videoProducer = null;
+      audioProducer = null;
+      //consumer = null;
+      consumers.forEach(({ consumer }) => consumer?.close());
+      consumers.clear();
       // Show room setup again
       roomSetupDiv.style.display = 'block';
       roomControlsDiv.style.display = 'none';
@@ -31,15 +45,8 @@
     console.error('Socket error:', error)
   })
 
-  let device
-  let rtpCapabilities
-  let producerTransport
-  let consumerTransport
-  let producer
-  let consumer
-  let roomId;
-
-  const params = {
+  
+  const videoparams = {
     encodings: [
       {
         rid: 'r0',
@@ -62,6 +69,22 @@
     }
   }
 
+  const audioParams = {
+  track: null,                // will be filled with stream.getAudioTracks()[0]
+  codecOptions: {
+    opusStereo: false,        // mono keeps bit-rate low
+    opusFec: true,            // forward-error-correction for packet-loss
+    opusDtx: true,            // silent-period suppression make it false for now
+    opusMaxPlaybackRate: 48000,
+    opusPtime: 20
+  },
+  encodings: [
+    {
+      maxBitrate: 64000       // 64 kbps is crisp for speech
+    }
+  ]
+};
+
   // ICE servers configuration - make sure these work
   const iceServers = [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -75,7 +98,7 @@
 
   // DOM elements
   const localVideo = document.getElementById('localVideo')
-  const remoteVideo = document.getElementById('remoteVideo')
+  const remoteVideos = document.getElementById('remoteVideos')
   const btnJoinRoom = document.getElementById('btnJoinRoom');
   const btnCreateRoom = document.getElementById('btnCreateRoom');
   const roomCodeInput = document.getElementById('roomCodeInput'); // Input for joining
@@ -84,12 +107,42 @@
   const roomSetupDiv = document.getElementById('roomSetup'); // To hide after joining/creating
   const roomControlsDiv = document.getElementById('roomControls'); // To show after joining/creating
 
+function addRemoteMedia(producerId, track, kind) {
+  if (consumers.has(producerId)) return;
+
+  let el;
+  if (kind === 'audio') {
+    el = document.createElement('audio');
+    el.controls = false;
+    el.muted = false;
+  } else {
+    el = document.createElement('video');
+    el.playsInline = true;
+  }
+  el.autoplay = true;
+  el.srcObject = new MediaStream([track]);
+  document.getElementById(kind === 'audio' ? 'remoteAudios' : 'remoteVideos').appendChild(el);
+
+  consumers.set(producerId, { el, consumer: null });
+}
+
+function removeRemoteMedia(producerId) {
+  const entry = consumers.get(producerId);
+  if (!entry) return;
+
+  entry.el.remove();
+  entry.consumer?.close();
+  consumers.delete(producerId);
+}
+
 
   const streamSuccess = async (stream) => {
     try {
       localVideo.srcObject = stream
-      const track = stream.getVideoTracks()[0]
-      params.track = track
+      const videotrack = stream.getVideoTracks()[0];
+      const audiotrack = stream.getAudioTracks()[0];
+      videoparams.track = videotrack;
+      audioParams.track = audiotrack;
       console.log('Local stream set successfully')
     } catch (error) {
       console.error('Error in streamSuccess:', error)
@@ -105,11 +158,11 @@
                   height: { min: 400, max: 1080 }
               }
           });
-          const track = streamSuccess(stream); // Call streamSuccess directly with the awaited stream
-          return track; // getLocalStream now returns the track
+           streamSuccess(stream); // Call streamSuccess directly with the awaited stream
+          // return track; // getLocalStream now returns the track
       } catch (error) {
           console.error("Error accessing media devices in getLocalStream:", error.name, error.message, error);
-          throw error; // Propagate error
+          throw error;
       }
   };
 
@@ -256,34 +309,60 @@
     })
   }
 
+  
   const connectSendTransport = async () => {
-    try {
-      if (!producerTransport) {
-        throw new Error('Producer transport not created')
-      }
-      
-      if (!params.track) {
-        throw new Error('No track available to produce')
-      }
-
-      console.log('Starting to produce media...')
-      producer = await producerTransport.produce(params);
-      console.log('Producer created successfully:', producer.id);
-
-      producer.on('trackended', () => {
-        console.log('Producer track ended')
-      })
-
-      producer.on('transportclose', () => {
-        console.log('Producer transport closed')
-      })
-
-      return producer
-    } catch (error) {
-      console.error('Error connecting send transport:', error)
-      throw error
+  try {
+    if (!producerTransport) {
+      throw new Error('Producer transport not created');
     }
+    if (!videoparams.track) {
+      throw new Error('No video track available');
+    }
+
+    // 1. VIDEO
+    console.log('Starting to produce video...')
+    videoProducer = await producerTransport.produce({
+      track: videoparams.track,
+      ...videoparams,         // encodings / codecOptions
+      kind: 'video'
+    });
+    console.log('videoProducer created successfully:', videoProducer.id);
+
+     videoProducer.on('trackended', () => {
+      console.log('Video track ended');
+      videoProducer?.close();          // clean up
+    });
+    videoProducer.on('transportclose', () => {
+      console.log('Video producer transport closed');
+      videoProducer = null;
+    });
+
+
+    // 2. AUDIO
+    console.log('Starting to produce audio...')
+    if (audioParams.track) {
+      audioProducer = await producerTransport.produce({
+        track: audioParams.track,
+        ...audioParams,
+        kind: 'audio'
+      });
+    }
+    console.log('audioProducer created successfully:', audioProducer.id);
+      audioProducer.on('trackended', () => {
+        console.log('Audio track ended');
+        audioProducer?.close();
+      });
+      audioProducer.on('transportclose', () => {
+        console.log('Audio producer transport closed');
+        audioProducer = null;
+      });
+
+    console.log('Produced video & audio:', !!videoProducer, !!audioProducer);
+  } catch (error) {
+    console.error('Error in connectSendTransport:', error);
+    throw error;
   }
+};
 
   const createRecvTransport = () => {
     return new Promise((resolve, reject) => {
@@ -348,69 +427,53 @@
     })
   }
 
-  const connectRecvTransport = async (producerInfo) => {
-    try {
-      if (!consumerTransport) {
-        throw new Error('Consumer transport not created')
-      }
-      
-      console.log(producerInfo);
-      if (!device?.rtpCapabilities) {
-        throw new Error('Device capabilities not available')
-      }
-      console.log('Starting to consume media...')
-      const response = await new Promise((resolve, reject) => {
-        socket.emit('consume', {
-          producerId : producerInfo.producerId  ,
-          rtpCapabilities: device.rtpCapabilities,
-          roomId:roomId,
-        }, (data) => {
-          if (data.error) {
-            reject(data.error)
-            return
-          }
-          resolve(data)
-        })
-      })
+  // consumers = new Map();   // already defined at top-level scope
 
-      console.log('Consumer params:', response.params)
-      consumer = await consumerTransport.consume({
-        id: response.params.id,
-        producerId: response.params.producerId,
-        kind: response.params.kind,
-        rtpParameters: response.params.rtpParameters,
-        paused: true
-      })
+const connectRecvTransport = async (producerInfo) => {
+  try {
+    if (!consumerTransport) throw new Error('Consumer transport not created');
+    if (!device?.rtpCapabilities) throw new Error('Device capabilities not available');
 
-      console.log("trying to add the remote video")
-      // Set up the remote video stream
-      const { track } = consumer
-      if (!remoteVideo.srcObject) {
-        remoteVideo.srcObject = new MediaStream()
-      }
-      remoteVideo.srcObject.addTrack(track)
-      console.log("remote video set successfully")
-      // Resume the consumer
-     await new Promise((resolve, reject) => {
-    // Correct way to emit with data and an acknowledgment callback
-    socket.emit('consumer-resume', { consumerId: consumer.id, roomId : roomId }, (error) => {
-        if (error) {
-            console.error('Consumer resume server error:', error); // More specific logging
-            reject(error);
-            return;
-        }
-        console.log('Consumer resume server success'); // Log success
-        resolve();
+    console.log('Starting to consume media...', producerInfo);
+
+    // 1. Ask server for consume params
+    const { params } = await new Promise((resolve, reject) => {
+      socket.emit('consume', {
+        producerId: producerInfo.producerId,
+        rtpCapabilities: device.rtpCapabilities,
+        roomId
+      }, (data) => {
+        if (data.error) reject(data.error);
+        else resolve(data);
+      });
     });
-});
 
-      console.log('Consumer created and resumed successfully:', consumer.id)
-      return consumer
-    } catch (error) {
-      console.error('Error in connectRecvTransport:', error)
-      throw error
-    }
+    // 2. Create the consumer object
+    const consumer = await consumerTransport.consume({
+      id: params.id,
+      producerId: params.producerId,
+      kind: params.kind,
+      rtpParameters: params.rtpParameters,
+      paused: true
+    });
+
+    addRemoteMedia(params.producerId, consumer.track, params.kind);
+
+    // 5. Resume on server
+    await new Promise((resolve, reject) => {
+      socket.emit('consumer-resume', { consumerId: consumer.id, roomId }, (error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+
+    console.log('Consumer created & resumed:', consumer.id);
+    return consumer;
+  } catch (err) {
+    console.error('connectRecvTransport error:', err);
+    throw err;
   }
+};
 
   const setupMediasoupPipeline = async () => {
       try {
@@ -483,7 +546,9 @@
   };
 
   const requestExistingProducers = () => {
-    console.log("trying to get the producers in the room")
+    console.log("trying to get the producers in the room");
+      const myPids = [videoProducer?.id, audioProducer?.id].filter(Boolean);
+
       socket.emit('getProducersInRoom', { roomId: roomId }, (response) => {
           if (response.error) {
               console.error('Error getting producers in room:', response.error);
@@ -491,7 +556,7 @@
           }
           console.log('Existing producers in room:', response.producerIds);
           response.producerIds.forEach(async (producerId) => {
-              if (producerId !== producer?.id) { // Don't consume our own producer
+              if (!myPids.includes(producerId)) { // Don't consume our own producer
                   // Request server for consumer parameters for this producer
                   socket.emit('consume', { producerId: producerId, rtpCapabilities: device.rtpCapabilities, roomId: roomId }, (consumerResponse) => {
                       if (consumerResponse.error) {
@@ -509,7 +574,8 @@
   // Listener for new producers in the room (from other participants)
   socket.on('newProducer', (data) => {
       console.log('New producer announced:', data);
-      if (data.producerId && data.producerId !== producer?.id) { // Don't consume our own producer
+       const myPids = [videoProducer?.id, audioProducer?.id].filter(Boolean);
+      if (data.producerId && !myPids.includes(data.producerId)) { // Don't consume our own producer
           // Request server for consumer parameters for this new producer
           socket.emit('consume', { producerId: data.producerId, rtpCapabilities: device.rtpCapabilities, roomId: roomId }, (consumerResponse) => {
               if (consumerResponse.error) {
@@ -523,19 +589,10 @@
   });
 
   // Listener for producers removed from the room
-  socket.on('producerRemoved', ({ producerId }) => {
-      console.log('Producer removed:', producerId);
-      // You would typically find the corresponding remote video element and remove it
-      // For simplicity, we are only supporting one remote video in this example.
-      // In a multi-party scenario, you'd need to map producerIds to specific video elements.
-      if (consumer && consumer.producerId === producerId) {
-          console.log('Our consumed producer was removed. Cleaning up remote video.');
-          consumer.close();
-          consumer = null;
-          remoteVideo.srcObject = null; // Clear the remote video
-      }
-  });
-
+  socket.on('producerClosed', ({ producerId }) => {
+  console.log('Producer closed:', producerId);
+  removeRemoteMedia(producerId);
+});
 
   // --- UI Event Listeners ---
   btnJoinRoom.addEventListener('click', JoinRoom);
