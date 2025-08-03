@@ -34819,6 +34819,12 @@ exports["default"] = version;
 "use strict";
 
 function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) { return typeof o; } : function (o) { return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o; }, _typeof(o); }
+function _slicedToArray(r, e) { return _arrayWithHoles(r) || _iterableToArrayLimit(r, e) || _unsupportedIterableToArray(r, e) || _nonIterableRest(); }
+function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
+function _unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) return _arrayLikeToArray(r, a); var t = {}.toString.call(r).slice(8, -1); return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0; } }
+function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
+function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t["return"] && (u = t["return"](), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
+function _arrayWithHoles(r) { if (Array.isArray(r)) return r; }
 function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
 function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { _defineProperty(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
 function _defineProperty(e, r, t) { return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : e[r] = t, e; }
@@ -34842,9 +34848,16 @@ var consumerTransport;
 var videoProducer;
 var audioProducer;
 var roomId;
+var screenVideoProducer = null;
+var screenAudioProducer = null;
 var consumers = new Map();
 socket.on('disconnect', function () {
+  // Show room setup again
   console.log('Disconnected from server');
+  roomSetupDiv.style.display = 'block';
+  roomControlsDiv.style.display = 'none';
+  displayRoomCodeSpan.textContent = 'N/A';
+  copyRoomCodeButton.style.display = 'none';
   localVideo.srcObject = null;
   remoteVideos.srcObject = null;
   // Reset room state
@@ -34861,11 +34874,6 @@ socket.on('disconnect', function () {
     return consumer === null || consumer === void 0 ? void 0 : consumer.close();
   });
   consumers.clear();
-  // Show room setup again
-  roomSetupDiv.style.display = 'block';
-  roomControlsDiv.style.display = 'none';
-  displayRoomCodeSpan.textContent = 'N/A';
-  copyRoomCodeButton.style.display = 'none';
 });
 socket.on('error', function (error) {
   console.error('Socket error:', error);
@@ -34927,7 +34935,10 @@ var displayRoomCodeSpan = document.getElementById('displayRoomCode'); // To show
 var copyRoomCodeButton = document.getElementById('copyRoomCode'); // New button to copy
 var roomSetupDiv = document.getElementById('roomSetup'); // To hide after joining/creating
 var roomControlsDiv = document.getElementById('roomControls'); // To show after joining/creating
-
+var btnShareScreen = document.getElementById('btnShareScreen');
+// const btnStopScreenShare = document.getElementById('btnStopScreenShare');
+var btnToggleMic = document.getElementById('btnToggleMic');
+var btnToggleCam = document.getElementById('btnToggleCam');
 function addRemoteMedia(producerId, track, kind) {
   if (consumers.has(producerId)) return;
   var el;
@@ -35470,46 +35481,127 @@ var setupMediasoupPipeline = /*#__PURE__*/function () {
     return _regenerator().w(function (_context9) {
       while (1) switch (_context9.n) {
         case 0:
-          _context9.p = 0;
-          _context9.n = 1;
-          return getLocalStream();
-        case 1:
+          roomSetupDiv.style.display = 'none'; // hide immediately
+          _context9.p = 1;
           _context9.n = 2;
-          return getRtpCapabilities();
+          return getLocalStream();
         case 2:
           _context9.n = 3;
-          return createDevice();
+          return getRtpCapabilities();
         case 3:
           _context9.n = 4;
-          return createSendTransport();
+          return createDevice();
         case 4:
           _context9.n = 5;
-          return connectSendTransport();
+          return createSendTransport();
         case 5:
           _context9.n = 6;
-          return createRecvTransport();
+          return connectSendTransport();
         case 6:
+          _context9.n = 7;
+          return createRecvTransport();
+        case 7:
           // We'll consume producers as they become available in the room
           console.log('Mediasoup pipeline initialized.');
-          roomSetupDiv.style.display = 'none'; // Hide room setup controls
+          // wire controls only AFTER producers are ready
+          document.getElementById('btnToggleMic').addEventListener('click', toggleMic);
+          document.getElementById('btnToggleCam').addEventListener('click', toggleCam);
+
+          // roomSetupDiv.style.display = 'none'; // Hide room setup controls
           roomControlsDiv.style.display = 'block'; // Show video elements and call buttons
-          _context9.n = 8;
+          _context9.n = 9;
           break;
-        case 7:
-          _context9.p = 7;
+        case 8:
+          _context9.p = 8;
           _t8 = _context9.v;
           console.error('Error setting up Mediasoup pipeline:', _t8);
           alert('Failed to set up video call. See console for details.');
           // Potentially disable UI elements or show error to user
-        case 8:
+        case 9:
           return _context9.a(2);
       }
-    }, _callee9, null, [[0, 7]]);
+    }, _callee9, null, [[1, 8]]);
   }));
   return function setupMediasoupPipeline() {
     return _ref11.apply(this, arguments);
   };
 }();
+function toggleScreenShare() {
+  return _toggleScreenShare.apply(this, arguments);
+}
+function _toggleScreenShare() {
+  _toggleScreenShare = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12() {
+    var _screenAudioProducer, stream, _stream$getVideoTrack, _stream$getVideoTrack2, videoTrack, _stream$getAudioTrack, _stream$getAudioTrack2, audioTrack;
+    return _regenerator().w(function (_context12) {
+      while (1) switch (_context12.n) {
+        case 0:
+          if (!screenVideoProducer) {
+            _context12.n = 1;
+            break;
+          }
+          screenVideoProducer.close();
+          (_screenAudioProducer = screenAudioProducer) === null || _screenAudioProducer === void 0 ? void 0 : _screenAudioProducer.close();
+          screenVideoProducer = screenAudioProducer = null;
+          return _context12.a(2);
+        case 1:
+          _context12.n = 2;
+          return navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            // always required
+            audio: true // shows “Share audio” checkbox if available
+          });
+        case 2:
+          stream = _context12.v;
+          _stream$getVideoTrack = stream.getVideoTracks(), _stream$getVideoTrack2 = _slicedToArray(_stream$getVideoTrack, 1), videoTrack = _stream$getVideoTrack2[0];
+          _stream$getAudioTrack = stream.getAudioTracks(), _stream$getAudioTrack2 = _slicedToArray(_stream$getAudioTrack, 1), audioTrack = _stream$getAudioTrack2[0]; // Produce the screen video
+          _context12.n = 3;
+          return producerTransport.produce({
+            track: videoTrack,
+            kind: 'video'
+          });
+        case 3:
+          screenVideoProducer = _context12.v;
+          if (!audioTrack) {
+            _context12.n = 5;
+            break;
+          }
+          _context12.n = 4;
+          return producerTransport.produce({
+            track: audioTrack,
+            kind: 'audio'
+          });
+        case 4:
+          screenAudioProducer = _context12.v;
+        case 5:
+          // Auto-close when user clicks “Stop sharing” in the browser UI
+          videoTrack.onended = toggleScreenShare;
+        case 6:
+          return _context12.a(2);
+      }
+    }, _callee12);
+  }));
+  return _toggleScreenShare.apply(this, arguments);
+}
+function toggleMic() {
+  var btn = document.getElementById('btnToggleMic');
+  if (audioProducer && !audioProducer.paused) {
+    audioProducer.pause(); // mute local mic
+    btn.textContent = '🎤 Mic OFF';
+  } else if (audioProducer) {
+    audioProducer.resume(); // un-mute mic
+    btn.textContent = '🎤 Mic ON';
+  }
+}
+function toggleCam() {
+  var btn = document.getElementById('btnToggleCam');
+  if (videoProducer && !videoProducer.paused) {
+    videoProducer.pause(); // turn camera off
+    btn.textContent = '📹 Cam OFF';
+  } else if (videoProducer) {
+    videoProducer.resume(); // turn camera on
+    btn.textContent = '📹 Cam ON';
+  }
+}
 var CreateRoom = /*#__PURE__*/function () {
   var _ref12 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0() {
     return _regenerator().w(function (_context0) {
@@ -35699,6 +35791,11 @@ copyRoomCodeButton.addEventListener('click', function () {
 document.addEventListener('DOMContentLoaded', function () {
   roomControlsDiv.style.display = 'none';
   copyRoomCodeButton.style.display = 'none';
+});
+document.addEventListener('DOMContentLoaded', function () {
+  document.getElementById('btnShareScreen').addEventListener('click', toggleScreenShare);
+  // document.getElementById('btnToggleMic')  .addEventListener('click', toggleMic);
+  // document.getElementById('btnToggleCam')  .addEventListener('click', toggleCam);
 });
 
 },{"mediasoup-client":67,"socket.io-client":80}]},{},[114]);

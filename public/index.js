@@ -15,11 +15,19 @@
   let videoProducer;
   let audioProducer;
   let roomId;
-  
+  let screenVideoProducer = null;
+  let screenAudioProducer = null;
+
 const consumers = new Map();
 
   socket.on('disconnect', () => {
+    // Show room setup again
     console.log('Disconnected from server');
+    roomSetupDiv.style.display = 'block';
+    roomControlsDiv.style.display = 'none';
+      displayRoomCodeSpan.textContent = 'N/A';
+      copyRoomCodeButton.style.display = 'none';
+
     localVideo.srcObject = null;
       remoteVideos.srcObject = null;
       // Reset room state
@@ -33,11 +41,9 @@ const consumers = new Map();
       //consumer = null;
       consumers.forEach(({ consumer }) => consumer?.close());
       consumers.clear();
-      // Show room setup again
-      roomSetupDiv.style.display = 'block';
-      roomControlsDiv.style.display = 'none';
-      displayRoomCodeSpan.textContent = 'N/A';
-      copyRoomCodeButton.style.display = 'none';
+      
+      
+      
 
   })
 
@@ -106,7 +112,10 @@ const consumers = new Map();
   const copyRoomCodeButton = document.getElementById('copyRoomCode'); // New button to copy
   const roomSetupDiv = document.getElementById('roomSetup'); // To hide after joining/creating
   const roomControlsDiv = document.getElementById('roomControls'); // To show after joining/creating
-
+  const btnShareScreen = document.getElementById('btnShareScreen');
+  // const btnStopScreenShare = document.getElementById('btnStopScreenShare');
+  const btnToggleMic = document.getElementById('btnToggleMic');
+  const btnToggleCam = document.getElementById('btnToggleCam');
 function addRemoteMedia(producerId, track, kind) {
   if (consumers.has(producerId)) return;
 
@@ -476,6 +485,7 @@ const connectRecvTransport = async (producerInfo) => {
 };
 
   const setupMediasoupPipeline = async () => {
+    roomSetupDiv.style.display = 'none'; // hide immediately
       try {
           await getLocalStream();
           await getRtpCapabilities();
@@ -485,7 +495,11 @@ const connectRecvTransport = async (producerInfo) => {
           await createRecvTransport();
           // We'll consume producers as they become available in the room
           console.log('Mediasoup pipeline initialized.');
-          roomSetupDiv.style.display = 'none'; // Hide room setup controls
+          // wire controls only AFTER producers are ready
+          document.getElementById('btnToggleMic').addEventListener('click', toggleMic);
+        document.getElementById('btnToggleCam').addEventListener('click', toggleCam);
+
+          // roomSetupDiv.style.display = 'none'; // Hide room setup controls
           roomControlsDiv.style.display = 'block'; // Show video elements and call buttons
       } catch (error) {
           console.error('Error setting up Mediasoup pipeline:', error);
@@ -493,6 +507,64 @@ const connectRecvTransport = async (producerInfo) => {
           // Potentially disable UI elements or show error to user
       }
   };
+
+  async function toggleScreenShare() {
+  // Stop previous share if running
+  if (screenVideoProducer) {
+    screenVideoProducer.close();
+    screenAudioProducer?.close();
+    screenVideoProducer = screenAudioProducer = null;
+    return;
+  }
+
+  // Browser will pop the native picker
+  const stream = await navigator.mediaDevices.getDisplayMedia({
+    video: true,          // always required
+    audio: true           // shows “Share audio” checkbox if available
+  });
+
+  const [videoTrack] = stream.getVideoTracks();
+  const [audioTrack] = stream.getAudioTracks();
+
+  // Produce the screen video
+  screenVideoProducer = await producerTransport.produce({
+    track: videoTrack,
+    kind: 'video'
+  });
+
+  // Produce system/tab audio if user ticked the checkbox
+  if (audioTrack) {
+    screenAudioProducer = await producerTransport.produce({
+      track: audioTrack,
+      kind: 'audio'
+    });
+  }
+
+  // Auto-close when user clicks “Stop sharing” in the browser UI
+  videoTrack.onended = toggleScreenShare;
+}
+
+function toggleMic() {
+  const btn = document.getElementById('btnToggleMic');
+  if (audioProducer && !audioProducer.paused) {
+    audioProducer.pause();                 // mute local mic
+    btn.textContent = '🎤 Mic OFF';
+  } else if (audioProducer) {
+    audioProducer.resume();                // un-mute mic
+    btn.textContent = '🎤 Mic ON';
+  }
+}
+
+function toggleCam() {
+  const btn = document.getElementById('btnToggleCam');
+  if (videoProducer && !videoProducer.paused) {
+    videoProducer.pause();                 // turn camera off
+    btn.textContent = '📹 Cam OFF';
+  } else if (videoProducer) {
+    videoProducer.resume();                // turn camera on
+    btn.textContent = '📹 Cam ON';
+  }
+}
 
   const CreateRoom = async () => {
       try {
@@ -616,3 +688,12 @@ const connectRecvTransport = async (producerInfo) => {
       roomControlsDiv.style.display = 'none';
       copyRoomCodeButton.style.display = 'none';
   });
+
+  document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('btnShareScreen')
+          .addEventListener('click', toggleScreenShare);
+  // document.getElementById('btnToggleMic')  .addEventListener('click', toggleMic);
+  // document.getElementById('btnToggleCam')  .addEventListener('click', toggleCam);
+});
+
+  
