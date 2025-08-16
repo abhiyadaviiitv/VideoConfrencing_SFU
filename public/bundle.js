@@ -34851,13 +34851,31 @@ var roomId;
 var screenVideoProducer = null;
 var screenAudioProducer = null;
 var consumers = new Map();
+socket.on('activeSpeaker', function (_ref2) {
+  var peerId = _ref2.peerId;
+  // Now receives peerId
+  // Remove all highlights
+  document.querySelectorAll('.tile').forEach(function (t) {
+    return t.classList.remove('active');
+  });
+  console.log('CLIENT activeSpeaker', peerId);
+  // Highlight video for this peer
+  var videoEl = peerVideos.get(peerId);
+  if (videoEl) {
+    videoEl.classList.add('active');
+    videoEl.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest'
+    });
+  }
+});
 socket.on('disconnect', function () {
   // Show room setup again
-  console.log('Disconnected from server');
-  roomSetupDiv.style.display = 'block';
   roomControlsDiv.style.display = 'none';
+  roomSetupDiv.style.display = 'block';
   displayRoomCodeSpan.textContent = 'N/A';
   copyRoomCodeButton.style.display = 'none';
+  console.log('Disconnected from server');
   localVideo.srcObject = null;
   remoteVideos.srcObject = null;
   // Reset room state
@@ -34869,8 +34887,8 @@ socket.on('disconnect', function () {
   videoProducer = null;
   audioProducer = null;
   //consumer = null;
-  consumers.forEach(function (_ref2) {
-    var consumer = _ref2.consumer;
+  consumers.forEach(function (_ref3) {
+    var consumer = _ref3.consumer;
     return consumer === null || consumer === void 0 ? void 0 : consumer.close();
   });
   consumers.clear();
@@ -34939,7 +34957,12 @@ var btnShareScreen = document.getElementById('btnShareScreen');
 // const btnStopScreenShare = document.getElementById('btnStopScreenShare');
 var btnToggleMic = document.getElementById('btnToggleMic');
 var btnToggleCam = document.getElementById('btnToggleCam');
-function addRemoteMedia(producerId, track, kind) {
+
+// Add at top with other variables
+var peerVideos = new Map(); // Maps peer IDs to video elements
+
+function addRemoteMedia(producerId, track, kind, peerId) {
+  // Add peerId parameter
   if (consumers.has(producerId)) return;
   var el;
   if (kind === 'audio') {
@@ -34949,25 +34972,37 @@ function addRemoteMedia(producerId, track, kind) {
   } else {
     el = document.createElement('video');
     el.playsInline = true;
+
+    // Store video element with peer ID
+    peerVideos.set(peerId, el);
   }
   el.autoplay = true;
   el.srcObject = new MediaStream([track]);
   document.getElementById(kind === 'audio' ? 'remoteAudios' : 'remoteVideos').appendChild(el);
+  el.classList.add('tile');
+
+  // Store peerId with consumer entry
   consumers.set(producerId, {
     el: el,
-    consumer: null
-  });
+    consumer: null,
+    peerId: peerId
+  }); // Add peerId here
 }
 function removeRemoteMedia(producerId) {
   var _entry$consumer;
   var entry = consumers.get(producerId);
   if (!entry) return;
+
+  // Remove from peerVideos if video
+  if (entry.el.tagName === 'VIDEO') {
+    peerVideos["delete"](entry.peerId);
+  }
   entry.el.remove();
   (_entry$consumer = entry.consumer) === null || _entry$consumer === void 0 ? void 0 : _entry$consumer.close();
   consumers["delete"](producerId);
 }
 var streamSuccess = /*#__PURE__*/function () {
-  var _ref3 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee(stream) {
+  var _ref4 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee(stream) {
     var videotrack, audiotrack;
     return _regenerator().w(function (_context) {
       while (1) switch (_context.n) {
@@ -34988,21 +35023,58 @@ var streamSuccess = /*#__PURE__*/function () {
     }, _callee);
   }));
   return function streamSuccess(_x) {
-    return _ref3.apply(this, arguments);
+    return _ref4.apply(this, arguments);
   };
 }();
+function pickMic() {
+  return _pickMic.apply(this, arguments);
+}
+function _pickMic() {
+  _pickMic = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12() {
+    var list, mic;
+    return _regenerator().w(function (_context12) {
+      while (1) switch (_context12.n) {
+        case 0:
+          _context12.n = 1;
+          return navigator.mediaDevices.enumerateDevices();
+        case 1:
+          list = _context12.v;
+          mic = list.find(function (d) {
+            return d.kind === 'audioinput' && /headset|earbuds|headphone/i.test(d.label);
+          }) || list.find(function (d) {
+            return d.kind === 'audioinput' && d.deviceId !== 'default';
+          }) || list.find(function (d) {
+            return d.kind === 'audioinput';
+          });
+          return _context12.a(2, mic === null || mic === void 0 ? void 0 : mic.deviceId);
+      }
+    }, _callee12);
+  }));
+  return _pickMic.apply(this, arguments);
+}
 var getLocalStream = /*#__PURE__*/function () {
-  var _ref4 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2() {
-    var stream, _t;
+  var _ref5 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2() {
+    var micId, stream;
     return _regenerator().w(function (_context2) {
       while (1) switch (_context2.n) {
         case 0:
-          // Make getLocalStream async itself
-          console.log("Getting the local stream");
-          _context2.p = 1;
+          console.log('Selecting best mic…');
+          _context2.n = 1;
+          return pickMic();
+        case 1:
+          micId = _context2.v;
           _context2.n = 2;
           return navigator.mediaDevices.getUserMedia({
-            audio: true,
+            audio: {
+              deviceId: micId ? {
+                exact: micId
+              } : undefined,
+              noiseSuppression: true,
+              echoCancellation: true,
+              autoGainControl: true,
+              sampleRate: 48000,
+              channelCount: 1
+            },
             video: {
               width: {
                 min: 640,
@@ -35016,27 +35088,19 @@ var getLocalStream = /*#__PURE__*/function () {
           });
         case 2:
           stream = _context2.v;
-          streamSuccess(stream); // Call streamSuccess directly with the awaited stream
-          // return track; // getLocalStream now returns the track
-          _context2.n = 4;
-          break;
+          streamSuccess(stream);
         case 3:
-          _context2.p = 3;
-          _t = _context2.v;
-          console.error("Error accessing media devices in getLocalStream:", _t.name, _t.message, _t);
-          throw _t;
-        case 4:
           return _context2.a(2);
       }
-    }, _callee2, null, [[1, 3]]);
+    }, _callee2);
   }));
   return function getLocalStream() {
-    return _ref4.apply(this, arguments);
+    return _ref5.apply(this, arguments);
   };
 }();
 var createDevice = /*#__PURE__*/function () {
-  var _ref5 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3() {
-    var _t2;
+  var _ref6 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3() {
+    var _t;
     return _regenerator().w(function (_context3) {
       while (1) switch (_context3.n) {
         case 0:
@@ -35060,9 +35124,9 @@ var createDevice = /*#__PURE__*/function () {
           break;
         case 3:
           _context3.p = 3;
-          _t2 = _context3.v;
-          console.error('Device creation error:', _t2);
-          if (_t2.name === 'UnsupportedError') {
+          _t = _context3.v;
+          console.error('Device creation error:', _t);
+          if (_t.name === 'UnsupportedError') {
             console.error('Browser not supported');
           }
         case 4:
@@ -35071,7 +35135,7 @@ var createDevice = /*#__PURE__*/function () {
     }, _callee3, null, [[0, 3]]);
   }));
   return function createDevice() {
-    return _ref5.apply(this, arguments);
+    return _ref6.apply(this, arguments);
   };
 }();
 var getRtpCapabilities = function getRtpCapabilities() {
@@ -35117,12 +35181,12 @@ var createSendTransport = function createSendTransport() {
 
       // Enhanced logging for debugging
       producerTransport.on('connect', /*#__PURE__*/function () {
-        var _ref7 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(_ref6, callback, errback) {
-          var dtlsParameters, _t3;
+        var _ref8 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4(_ref7, callback, errback) {
+          var dtlsParameters, _t2;
           return _regenerator().w(function (_context4) {
             while (1) switch (_context4.n) {
               case 0:
-                dtlsParameters = _ref6.dtlsParameters;
+                dtlsParameters = _ref7.dtlsParameters;
                 console.log('Producer transport connect event triggered');
                 _context4.p = 1;
                 _context4.n = 2;
@@ -35149,21 +35213,21 @@ var createSendTransport = function createSendTransport() {
                 break;
               case 3:
                 _context4.p = 3;
-                _t3 = _context4.v;
-                console.error('Transport connect error:', _t3);
-                errback(_t3);
+                _t2 = _context4.v;
+                console.error('Transport connect error:', _t2);
+                errback(_t2);
               case 4:
                 return _context4.a(2);
             }
           }, _callee4, null, [[1, 3]]);
         }));
         return function (_x2, _x3, _x4) {
-          return _ref7.apply(this, arguments);
+          return _ref8.apply(this, arguments);
         };
       }());
       producerTransport.on('produce', /*#__PURE__*/function () {
-        var _ref8 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(parameters, callback, errback) {
-          var _t4;
+        var _ref9 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5(parameters, callback, errback) {
+          var _t3;
           return _regenerator().w(function (_context5) {
             while (1) switch (_context5.n) {
               case 0:
@@ -35198,16 +35262,16 @@ var createSendTransport = function createSendTransport() {
                 break;
               case 3:
                 _context5.p = 3;
-                _t4 = _context5.v;
-                console.error('Produce event error:', _t4);
-                errback(_t4);
+                _t3 = _context5.v;
+                console.error('Produce event error:', _t3);
+                errback(_t3);
               case 4:
                 return _context5.a(2);
             }
           }, _callee5, null, [[1, 3]]);
         }));
         return function (_x5, _x6, _x7) {
-          return _ref8.apply(this, arguments);
+          return _ref9.apply(this, arguments);
         };
       }());
       producerTransport.on('connectionstatechange', function (state) {
@@ -35234,8 +35298,8 @@ var createSendTransport = function createSendTransport() {
   });
 };
 var connectSendTransport = /*#__PURE__*/function () {
-  var _ref9 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6() {
-    var _t5;
+  var _ref0 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee6() {
+    var _t4;
     return _regenerator().w(function (_context6) {
       while (1) switch (_context6.n) {
         case 0:
@@ -35304,16 +35368,16 @@ var connectSendTransport = /*#__PURE__*/function () {
           break;
         case 6:
           _context6.p = 6;
-          _t5 = _context6.v;
-          console.error('Error in connectSendTransport:', _t5);
-          throw _t5;
+          _t4 = _context6.v;
+          console.error('Error in connectSendTransport:', _t4);
+          throw _t4;
         case 7:
           return _context6.a(2);
       }
     }, _callee6, null, [[0, 6]]);
   }));
   return function connectSendTransport() {
-    return _ref9.apply(this, arguments);
+    return _ref0.apply(this, arguments);
   };
 }();
 var createRecvTransport = function createRecvTransport() {
@@ -35341,12 +35405,12 @@ var createRecvTransport = function createRecvTransport() {
         iceServers: iceServers
       }));
       consumerTransport.on('connect', /*#__PURE__*/function () {
-        var _ref1 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7(_ref0, callback, errback) {
-          var dtlsParameters, _t6;
+        var _ref10 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee7(_ref1, callback, errback) {
+          var dtlsParameters, _t5;
           return _regenerator().w(function (_context7) {
             while (1) switch (_context7.n) {
               case 0:
-                dtlsParameters = _ref0.dtlsParameters;
+                dtlsParameters = _ref1.dtlsParameters;
                 console.log('Consumer transport connect event triggered');
                 _context7.p = 1;
                 _context7.n = 2;
@@ -35371,16 +35435,16 @@ var createRecvTransport = function createRecvTransport() {
                 break;
               case 3:
                 _context7.p = 3;
-                _t6 = _context7.v;
-                console.error('Consumer transport connect error:', _t6);
-                errback(_t6);
+                _t5 = _context7.v;
+                console.error('Consumer transport connect error:', _t5);
+                errback(_t5);
               case 4:
                 return _context7.a(2);
             }
           }, _callee7, null, [[1, 3]]);
         }));
         return function (_x8, _x9, _x0) {
-          return _ref1.apply(this, arguments);
+          return _ref10.apply(this, arguments);
         };
       }());
       consumerTransport.on('connectionstatechange', function (state) {
@@ -35398,12 +35462,9 @@ var createRecvTransport = function createRecvTransport() {
     });
   });
 };
-
-// consumers = new Map();   // already defined at top-level scope
-
 var connectRecvTransport = /*#__PURE__*/function () {
-  var _ref10 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8(producerInfo) {
-    var _device, _yield$Promise, params, consumer, _t7;
+  var _ref11 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee8(producerInfo) {
+    var _device, _yield$Promise, params, consumer, _t6;
     return _regenerator().w(function (_context8) {
       while (1) switch (_context8.n) {
         case 0:
@@ -35446,7 +35507,7 @@ var connectRecvTransport = /*#__PURE__*/function () {
           });
         case 4:
           consumer = _context8.v;
-          addRemoteMedia(params.producerId, consumer.track, params.kind);
+          addRemoteMedia(params.producerId, consumer.track, params.kind, params.peerId);
 
           // 5. Resume on server
           _context8.n = 5;
@@ -35463,21 +35524,21 @@ var connectRecvTransport = /*#__PURE__*/function () {
           return _context8.a(2, consumer);
         case 6:
           _context8.p = 6;
-          _t7 = _context8.v;
-          console.error('connectRecvTransport error:', _t7);
-          throw _t7;
+          _t6 = _context8.v;
+          console.error('connectRecvTransport error:', _t6);
+          throw _t6;
         case 7:
           return _context8.a(2);
       }
     }, _callee8, null, [[0, 6]]);
   }));
   return function connectRecvTransport(_x1) {
-    return _ref10.apply(this, arguments);
+    return _ref11.apply(this, arguments);
   };
 }();
 var setupMediasoupPipeline = /*#__PURE__*/function () {
-  var _ref11 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9() {
-    var _t8;
+  var _ref12 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee9() {
+    var _t7;
     return _regenerator().w(function (_context9) {
       while (1) switch (_context9.n) {
         case 0:
@@ -35513,8 +35574,8 @@ var setupMediasoupPipeline = /*#__PURE__*/function () {
           break;
         case 8:
           _context9.p = 8;
-          _t8 = _context9.v;
-          console.error('Error setting up Mediasoup pipeline:', _t8);
+          _t7 = _context9.v;
+          console.error('Error setting up Mediasoup pipeline:', _t7);
           alert('Failed to set up video call. See console for details.');
           // Potentially disable UI elements or show error to user
         case 9:
@@ -35523,62 +35584,68 @@ var setupMediasoupPipeline = /*#__PURE__*/function () {
     }, _callee9, null, [[1, 8]]);
   }));
   return function setupMediasoupPipeline() {
-    return _ref11.apply(this, arguments);
+    return _ref12.apply(this, arguments);
   };
 }();
 function toggleScreenShare() {
   return _toggleScreenShare.apply(this, arguments);
 }
 function _toggleScreenShare() {
-  _toggleScreenShare = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee12() {
+  _toggleScreenShare = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee13() {
     var _screenAudioProducer, stream, _stream$getVideoTrack, _stream$getVideoTrack2, videoTrack, _stream$getAudioTrack, _stream$getAudioTrack2, audioTrack;
-    return _regenerator().w(function (_context12) {
-      while (1) switch (_context12.n) {
+    return _regenerator().w(function (_context13) {
+      while (1) switch (_context13.n) {
         case 0:
           if (!screenVideoProducer) {
-            _context12.n = 1;
+            _context13.n = 1;
             break;
           }
           screenVideoProducer.close();
           (_screenAudioProducer = screenAudioProducer) === null || _screenAudioProducer === void 0 ? void 0 : _screenAudioProducer.close();
           screenVideoProducer = screenAudioProducer = null;
-          return _context12.a(2);
+          return _context13.a(2);
         case 1:
-          _context12.n = 2;
+          _context13.n = 2;
           return navigator.mediaDevices.getDisplayMedia({
             video: true,
             // always required
-            audio: true // shows “Share audio” checkbox if available
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+              sampleRate: 48000,
+              channelCount: 1
+            } // shows “Share audio” checkbox if available
           });
         case 2:
-          stream = _context12.v;
+          stream = _context13.v;
           _stream$getVideoTrack = stream.getVideoTracks(), _stream$getVideoTrack2 = _slicedToArray(_stream$getVideoTrack, 1), videoTrack = _stream$getVideoTrack2[0];
           _stream$getAudioTrack = stream.getAudioTracks(), _stream$getAudioTrack2 = _slicedToArray(_stream$getAudioTrack, 1), audioTrack = _stream$getAudioTrack2[0]; // Produce the screen video
-          _context12.n = 3;
+          _context13.n = 3;
           return producerTransport.produce({
             track: videoTrack,
             kind: 'video'
           });
         case 3:
-          screenVideoProducer = _context12.v;
+          screenVideoProducer = _context13.v;
           if (!audioTrack) {
-            _context12.n = 5;
+            _context13.n = 5;
             break;
           }
-          _context12.n = 4;
+          _context13.n = 4;
           return producerTransport.produce({
             track: audioTrack,
             kind: 'audio'
           });
         case 4:
-          screenAudioProducer = _context12.v;
+          screenAudioProducer = _context13.v;
         case 5:
           // Auto-close when user clicks “Stop sharing” in the browser UI
           videoTrack.onended = toggleScreenShare;
         case 6:
-          return _context12.a(2);
+          return _context13.a(2);
       }
-    }, _callee12);
+    }, _callee13);
   }));
   return _toggleScreenShare.apply(this, arguments);
 }
@@ -35603,7 +35670,7 @@ function toggleCam() {
   }
 }
 var CreateRoom = /*#__PURE__*/function () {
-  var _ref12 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0() {
+  var _ref13 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee0() {
     return _regenerator().w(function (_context0) {
       while (1) switch (_context0.n) {
         case 0:
@@ -35631,11 +35698,11 @@ var CreateRoom = /*#__PURE__*/function () {
     }, _callee0);
   }));
   return function CreateRoom() {
-    return _ref12.apply(this, arguments);
+    return _ref13.apply(this, arguments);
   };
 }();
 var JoinRoom = /*#__PURE__*/function () {
-  var _ref13 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10() {
+  var _ref14 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee10() {
     var enteredRoomId;
     return _regenerator().w(function (_context10) {
       while (1) switch (_context10.n) {
@@ -35654,7 +35721,7 @@ var JoinRoom = /*#__PURE__*/function () {
             socket.emit('joinRoom', {
               roomId: roomId
             }, /*#__PURE__*/function () {
-              var _ref14 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(response) {
+              var _ref15 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee1(response) {
                 return _regenerator().w(function (_context1) {
                   while (1) switch (_context1.n) {
                     case 0:
@@ -35682,7 +35749,7 @@ var JoinRoom = /*#__PURE__*/function () {
                 }, _callee1);
               }));
               return function (_x10) {
-                return _ref14.apply(this, arguments);
+                return _ref15.apply(this, arguments);
               };
             }());
           } catch (error) {
@@ -35694,7 +35761,7 @@ var JoinRoom = /*#__PURE__*/function () {
     }, _callee10);
   }));
   return function JoinRoom() {
-    return _ref13.apply(this, arguments);
+    return _ref14.apply(this, arguments);
   };
 }();
 var requestExistingProducers = function requestExistingProducers() {
@@ -35710,7 +35777,7 @@ var requestExistingProducers = function requestExistingProducers() {
     }
     console.log('Existing producers in room:', response.producerIds);
     response.producerIds.forEach(/*#__PURE__*/function () {
-      var _ref15 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11(producerId) {
+      var _ref16 = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee11(producerId) {
         return _regenerator().w(function (_context11) {
           while (1) switch (_context11.n) {
             case 0:
@@ -35736,7 +35803,7 @@ var requestExistingProducers = function requestExistingProducers() {
         }, _callee11);
       }));
       return function (_x11) {
-        return _ref15.apply(this, arguments);
+        return _ref16.apply(this, arguments);
       };
     }());
   });
@@ -35766,8 +35833,8 @@ socket.on('newProducer', function (data) {
 });
 
 // Listener for producers removed from the room
-socket.on('producerClosed', function (_ref16) {
-  var producerId = _ref16.producerId;
+socket.on('producerClosed', function (_ref17) {
+  var producerId = _ref17.producerId;
   console.log('Producer closed:', producerId);
   removeRemoteMedia(producerId);
 });
@@ -35797,5 +35864,29 @@ document.addEventListener('DOMContentLoaded', function () {
   // document.getElementById('btnToggleMic')  .addEventListener('click', toggleMic);
   // document.getElementById('btnToggleCam')  .addEventListener('click', toggleCam);
 });
+
+// let recording = false;
+// let paused    = false;
+
+// const btnStart  = document.getElementById('btnStartRec');
+// const btnPause  = document.getElementById('btnPauseRec');
+// const btnResume = document.getElementById('btnResumeRec');
+// const btnStop   = document.getElementById('btnStopRec');
+
+// function updateButtons() {
+//   btnStart.disabled   = recording;
+//   btnPause.disabled   = !recording || paused;
+//   btnResume.disabled  = !recording || !paused;
+//   btnStop.disabled    = !recording;
+// }
+
+// function send(cmd) {
+//   socket.emit(cmd, { roomId });
+// }
+
+// btnStart.addEventListener('click',  () => { send('startRecording');  recording = true;  paused = false; updateButtons(); });
+// btnPause.addEventListener('click',  () => { send('pauseRecording');  paused = true;    updateButtons(); });
+// btnResume.addEventListener('click', () => { send('resumeRecording'); paused = false;   updateButtons(); });
+// btnStop.addEventListener('click',   () => { send('stopRecording');   recording = false; paused = false; updateButtons(); });
 
 },{"mediasoup-client":67,"socket.io-client":80}]},{},[114]);

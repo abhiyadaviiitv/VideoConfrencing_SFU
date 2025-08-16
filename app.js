@@ -5,6 +5,7 @@ import mediasoup from 'mediasoup'
 import path from 'path'
 import { Server } from 'socket.io'
 import { v4 as uuidv4 } from 'uuid'
+
 const __dirname = path.resolve()
 const app = express()
 const PORT = 4000
@@ -40,12 +41,14 @@ const mediaCodecs = [
   {
     kind: 'audio',
     mimeType: 'audio/opus',
+    preferredPayloadType: 111,
     clockRate: 48000,
     channels: 2,
   },
   {
     kind: 'video',
     mimeType: 'video/VP8',
+    preferredPayloadType: 110,
     clockRate: 90000,
     parameters: {
       'x-google-start-bitrate': 1000,
@@ -95,7 +98,7 @@ const createWebRtcTransport = async (router, socketId, sender, callback) => {
           ip: '0.0.0.0',
           // Use localhost for local development, or your actual public IP for production
           announcedIp: '127.0.0.1',
-          
+          //announcedIp:'192.168.166.42',
         },
       ],
       enableUdp: true,
@@ -213,25 +216,44 @@ socket.on('disconnect', () => {
     // --- Room Management ---
 
     socket.on('createRoom', async (callback) => {
-        const roomId = uuidv4(); // Generate a unique ID for the room
-        try {
-            const router = await worker.createRouter({ mediaCodecs });
-            rooms[roomId] = {
-                router: router,
-                transports: {}, // Stores { socketId: { producerTransport, consumerTransport } }
-                producers: {}, // Stores { producerId: producer }
-                consumers: {}, // Stores { consumerId: consumer }
-                peers: new Set(), // Keep track of socket IDs in this room
-            };
-            rooms[roomId].peers.add(socket.id);
-            socket.join(roomId); // Join the Socket.IO room
-            console.log(`Room created: ${roomId} by ${socket.id}`);
-            callback({ roomId: roomId, error: null });
-        } catch (error) {
-            console.error('Error creating room:', error);
-            callback({ roomId: null, error: error.message });
-        }
+  const roomId = uuidv4();
+  try {
+    const router = await worker.createRouter({ mediaCodecs });
+
+    // 1. create the observer
+    const audioLevelObserver = await router.createAudioLevelObserver({
+      maxEntries: 1,
+      threshold: -45,   // dBov(decibels relative to open circuit voltage  typically used to describe the power or intensity of audio signals) - adjust if too sensitive
+      interval: 200     // ms
     });
+
+    // broadcast loudest speaker to every peer in the room
+    // peer id bcz the producer ID received is for an audio stream, while you need to highlight a video element
+    audioLevelObserver.on('volumes', ([{ producer }]) => {
+        console.log('LOUDEST', producer.appData.socketId);
+  const peerId = producer.appData.socketId; // Get participant ID
+
+  peers.to(roomId).emit('activeSpeaker', { peerId }); // Send participant ID
+});
+
+
+    rooms[roomId] = {
+      router,
+      transports: {},
+      producers: {},
+      consumers: {},
+      peers: new Set(),
+      audioLevelObserver // keep reference so we can add producers later
+    };
+    rooms[roomId].peers.add(socket.id);
+    socket.join(roomId);
+    console.log(`Room created: ${roomId} by ${socket.id}`);
+    callback({ roomId, error: null });
+  } catch (error) {
+    console.error('Error creating room:', error);
+    callback({ roomId: null, error: error.message });
+  }
+});
 
     socket.on('joinRoom', async ({ roomId }, callback) => {
         if (!rooms[roomId]) {
@@ -356,6 +378,11 @@ socket.on('disconnect', () => {
                 rtpParameters,
                 appData: { ...appData, socketId: socket.id }, // Store socketId with producer
             });
+
+            if (producer.kind === 'audio') {
+              await room.audioLevelObserver.addProducer({ producerId: producer.id });
+            }
+
 
             producer.on('transportclose', () => {
                 console.log(`Producer ${producer.id} transport closed for ${socket.id}`);
@@ -482,6 +509,7 @@ socket.on('disconnect', () => {
                     producerId: producer.id,
                     kind: consumer.kind,
                     rtpParameters: consumer.rtpParameters,
+                    peerId: producer.appData.socketId
                 },
                 error: null
             });
@@ -515,6 +543,40 @@ socket.on('disconnect', () => {
         }
     });
 
+//     // --- Recording management (START / PAUSE / RESUME / STOP) ---
+//   socket.on('startRecording', ({ roomId }) => {
+//     const room = rooms[roomId];
+//     if (!room) return socket.emit('error', 'Room not found');
+//     if (recorders.has(roomId)) return socket.emit('error', 'Already recording');
+
+//     const recorder = new RoomRecorder(room, roomId);
+//     recorders.set(roomId, recorder);
+//     recorder.start()
+//       .then(() => socket.emit('recordingStarted', roomId))
+//       .catch(err => socket.emit('error', err.message));
+//   });
+
+//   socket.on('pauseRecording', ({ roomId }) => {
+//     const recorder = recorders.get(roomId);
+//     if (!recorder) return socket.emit('error', 'Not recording');
+//     recorder.pause();
+//     socket.emit('recordingPaused', roomId);
+//   });
+
+//   socket.on('resumeRecording', ({ roomId }) => {
+//     const recorder = recorders.get(roomId);
+//     if (!recorder) return socket.emit('error', 'Not recording');
+//     recorder.resume();
+//     socket.emit('recordingResumed', roomId);
+//   });
+
+//   socket.on('stopRecording', ({ roomId }) => {
+//     const recorder = recorders.get(roomId);
+//     if (!recorder) return socket.emit('error', 'Not recording');
+//     recorder.stop();
+//     recorders.delete(roomId);
+//     socket.emit('recordingStopped', roomId);
+//   });
     
 });
 

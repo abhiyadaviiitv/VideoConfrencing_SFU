@@ -110,6 +110,26 @@
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
         }
 
+        
+        /* Add important to override other styles if needed */
+#remoteVideos video.active {
+  outline: 4px solid #5ad298 !important;
+  transform: scale(1.05);
+  transition: outline 0.2s ease, transform 0.2s ease;
+  z-index: 10;
+  box-shadow: 0 0 15px rgba(90, 210, 152, 0.8);
+}
+
+/* Add glow effect for better visibility */
+@keyframes active-glow {
+  0% { box-shadow: 0 0 5px #5ad298; }
+  50% { box-shadow: 0 0 20px #5ad298; }
+  100% { box-shadow: 0 0 5px #5ad298; }
+}
+
+#remoteVideos video.active {
+  animation: active-glow 2s infinite;
+}
         h2 {
             color: #333;
             margin-top: 0;
@@ -145,21 +165,24 @@
                 <video id="remoteVideos" autoplay playsinline class="video"></video>
             </div> -->
             <!-- Grid for every remote participant -->
-        <div id="remoteVideos">
-            <h3>Remote Video</h3>
+            <div id="remoteVideos">
+                <h3>Remote Video</h3>
+            </div>
+            <div id="remoteAudios" style="display: none;"></div>
+
+            <button id="btnShareScreen">Share Screen</button>
+            <button id="btnToggleMic">🎤 Mic ON/OFF</button>
+            <button id="btnToggleCam">📹 Cam ON/OFF</button>
+            <!-- <button id="btnStartRec">Start Recording</button>
+        <button id="btnPauseRec" disabled>Pause Recording</button>
+        <button id="btnResumeRec" disabled>Resume Recording</button>
+        <button id="btnStopRec" disabled>Stop Recording</button> -->
         </div>
-        <div id="remoteAudios" style="display: none;"></div>
-        
-        <button id="btnShareScreen">Share Screen</button>
-        <button id="btnToggleMic">🎤 Mic ON/OFF</button>
-        <button id="btnToggleCam">📹 Cam ON/OFF</button>
 
-    </div>
-
-    <footer>
-        <script src="/socket.io/socket.io.js"></script>
-        <script src="bundle.js"></script>
-    </footer>
+        <footer>
+            <script src="/socket.io/socket.io.js"></script>
+            <script src="bundle.js"></script>
+        </footer>
 </body>
 
 </html>

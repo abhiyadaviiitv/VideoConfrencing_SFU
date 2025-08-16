@@ -20,14 +20,29 @@
 
 const consumers = new Map();
 
+socket.on('activeSpeaker', ({ peerId }) => { // Now receives peerId
+  // Remove all highlights
+  document.querySelectorAll('.tile').forEach(t => t.classList.remove('active'));
+  console.log('CLIENT activeSpeaker', peerId);
+  // Highlight video for this peer
+  const videoEl = peerVideos.get(peerId);
+  if (videoEl) {
+    videoEl.classList.add('active');
+
+    videoEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+});
+
   socket.on('disconnect', () => {
     // Show room setup again
-    console.log('Disconnected from server');
-    roomSetupDiv.style.display = 'block';
     roomControlsDiv.style.display = 'none';
-      displayRoomCodeSpan.textContent = 'N/A';
-      copyRoomCodeButton.style.display = 'none';
+    roomSetupDiv.style.display = 'block';
+    
+    displayRoomCodeSpan.textContent = 'N/A';
+    copyRoomCodeButton.style.display = 'none';
 
+    console.log('Disconnected from server');
+    
     localVideo.srcObject = null;
       remoteVideos.srcObject = null;
       // Reset room state
@@ -116,7 +131,11 @@ const consumers = new Map();
   // const btnStopScreenShare = document.getElementById('btnStopScreenShare');
   const btnToggleMic = document.getElementById('btnToggleMic');
   const btnToggleCam = document.getElementById('btnToggleCam');
-function addRemoteMedia(producerId, track, kind) {
+
+  // Add at top with other variables
+const peerVideos = new Map(); // Maps peer IDs to video elements
+
+function addRemoteMedia(producerId, track, kind, peerId) { // Add peerId parameter
   if (consumers.has(producerId)) return;
 
   let el;
@@ -127,17 +146,27 @@ function addRemoteMedia(producerId, track, kind) {
   } else {
     el = document.createElement('video');
     el.playsInline = true;
+    
+    // Store video element with peer ID
+    peerVideos.set(peerId, el);
   }
   el.autoplay = true;
   el.srcObject = new MediaStream([track]);
   document.getElementById(kind === 'audio' ? 'remoteAudios' : 'remoteVideos').appendChild(el);
-
-  consumers.set(producerId, { el, consumer: null });
+  el.classList.add('tile');
+  
+  // Store peerId with consumer entry
+  consumers.set(producerId, { el, consumer: null, peerId }); // Add peerId here
 }
 
 function removeRemoteMedia(producerId) {
   const entry = consumers.get(producerId);
   if (!entry) return;
+
+  // Remove from peerVideos if video
+  if (entry.el.tagName === 'VIDEO') {
+    peerVideos.delete(entry.peerId);
+  }
 
   entry.el.remove();
   entry.consumer?.close();
@@ -157,23 +186,35 @@ function removeRemoteMedia(producerId) {
       console.error('Error in streamSuccess:', error)
     }
   }
-  const getLocalStream = async () => { // Make getLocalStream async itself
-      console.log("Getting the local stream");
-      try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-              audio: true,
-              video: {
-                  width: { min: 640, max: 1920 },
-                  height: { min: 400, max: 1080 }
-              }
-          });
-           streamSuccess(stream); // Call streamSuccess directly with the awaited stream
-          // return track; // getLocalStream now returns the track
-      } catch (error) {
-          console.error("Error accessing media devices in getLocalStream:", error.name, error.message, error);
-          throw error;
-      }
-  };
+
+  async function pickMic() {
+  const list = await navigator.mediaDevices.enumerateDevices();
+  const mic =
+    list.find(d => d.kind === 'audioinput' && /headset|earbuds|headphone/i.test(d.label)) ||
+    list.find(d => d.kind === 'audioinput' && d.deviceId !== 'default') ||
+    list.find(d => d.kind === 'audioinput');
+  return mic?.deviceId;
+}
+
+  const getLocalStream = async () => {
+  console.log('Selecting best mic…');
+  const micId = await pickMic();
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      deviceId: micId ? { exact: micId } : undefined,
+      noiseSuppression: true,
+      echoCancellation: true,
+      autoGainControl: true,
+      sampleRate: 48000,
+      channelCount: 1
+    },
+    video: {
+      width: { min: 640, max: 1920 },
+      height: { min: 400, max: 1080 }
+    }
+  });
+  streamSuccess(stream);
+};
 
 
   const createDevice = async () => {
@@ -436,7 +477,6 @@ function removeRemoteMedia(producerId) {
     })
   }
 
-  // consumers = new Map();   // already defined at top-level scope
 
 const connectRecvTransport = async (producerInfo) => {
   try {
@@ -466,7 +506,7 @@ const connectRecvTransport = async (producerInfo) => {
       paused: true
     });
 
-    addRemoteMedia(params.producerId, consumer.track, params.kind);
+    addRemoteMedia(params.producerId, consumer.track, params.kind ,params.peerId);
 
     // 5. Resume on server
     await new Promise((resolve, reject) => {
@@ -520,7 +560,13 @@ const connectRecvTransport = async (producerInfo) => {
   // Browser will pop the native picker
   const stream = await navigator.mediaDevices.getDisplayMedia({
     video: true,          // always required
-    audio: true           // shows “Share audio” checkbox if available
+    audio: {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    sampleRate: 48000,
+    channelCount: 1
+  }           // shows “Share audio” checkbox if available
   });
 
   const [videoTrack] = stream.getVideoTracks();
@@ -695,5 +741,29 @@ function toggleCam() {
   // document.getElementById('btnToggleMic')  .addEventListener('click', toggleMic);
   // document.getElementById('btnToggleCam')  .addEventListener('click', toggleCam);
 });
+
+// let recording = false;
+// let paused    = false;
+
+// const btnStart  = document.getElementById('btnStartRec');
+// const btnPause  = document.getElementById('btnPauseRec');
+// const btnResume = document.getElementById('btnResumeRec');
+// const btnStop   = document.getElementById('btnStopRec');
+
+// function updateButtons() {
+//   btnStart.disabled   = recording;
+//   btnPause.disabled   = !recording || paused;
+//   btnResume.disabled  = !recording || !paused;
+//   btnStop.disabled    = !recording;
+// }
+
+// function send(cmd) {
+//   socket.emit(cmd, { roomId });
+// }
+
+// btnStart.addEventListener('click',  () => { send('startRecording');  recording = true;  paused = false; updateButtons(); });
+// btnPause.addEventListener('click',  () => { send('pauseRecording');  paused = true;    updateButtons(); });
+// btnResume.addEventListener('click', () => { send('resumeRecording'); paused = false;   updateButtons(); });
+// btnStop.addEventListener('click',   () => { send('stopRecording');   recording = false; paused = false; updateButtons(); });
 
   
