@@ -19,7 +19,7 @@
   },
   "homepage": "https://github.com/abhiyadaviiitv/VideoConfrencing_SFU#readme",
   "dependencies": {
-    "express": "^5.1.0",
+    "express": "^4.19.2",
     "httpolyglot": "^0.1.2",
     "mediasoup": "^3.16.5",
     "mediasoup-client": "^3.12.4",

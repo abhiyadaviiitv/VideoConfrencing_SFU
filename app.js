@@ -10,12 +10,8 @@ const __dirname = path.resolve()
 const app = express()
 const PORT = 4000
 
-// Express setup
-app.get('/', (req, res) => {
-  res.send('Mediasoup WebRTC Server')
-})
-
-app.use('/sfu', express.static(path.join(__dirname, 'public')))
+// Serve React build files
+app.use(express.static(path.join(__dirname, 'UI', 'frontend', 'dist')))
 
 // HTTPS server
 const httpsServer = https.createServer({}, app)
@@ -183,7 +179,10 @@ socket.on('disconnect', () => {
 
       if (producer.appData.socketId === socket.id) {
         // 2a. Notify all other peers BEFORE closing
-        socket.to(roomId).emit('producerClosed', { producerId });
+        socket.to(roomId).emit('producerClosed', { 
+          producerId,
+          appData: producer.appData 
+        });
 
         // 2b. Actually close the producer
         producer.close();
@@ -204,6 +203,9 @@ socket.on('disconnect', () => {
     /* 4. Remove this socket from the room peer list */
     room.peers.delete(socket.id);
 
+    // Notify other peers about disconnection
+    socket.to(roomId).emit('peerDisconnected', { peerId: socket.id });
+
     /* 5. If the room is now empty, tear it down */
     if (room.peers.size === 0 && Object.keys(room.producers).length === 0) {
       console.log(`Room ${roomId} is empty – closing router.`);
@@ -211,6 +213,12 @@ socket.on('disconnect', () => {
       delete rooms[roomId];
     }
   }
+});
+
+// Handle cleanup of old peer tiles when host reconnects
+socket.on('cleanupOldPeerTiles', ({ roomId, oldSocketId }) => {
+  console.log(`Cleaning up old peer tiles for ${oldSocketId} in room ${roomId}`);
+  socket.to(roomId).emit('peerDisconnected', { peerId: oldSocketId });
 });
 
     // --- Room Management ---
@@ -243,34 +251,99 @@ socket.on('disconnect', () => {
       producers: {},
       consumers: {},
       peers: new Set(),
-      audioLevelObserver // keep reference so we can add producers later
+      audioLevelObserver, // keep reference so we can add producers later
+      host: socket.id // Track the room creator as host
     };
+    
+    // Auto-join the room after creation to maintain same socket connection
     rooms[roomId].peers.add(socket.id);
     socket.join(roomId);
-    console.log(`Room created: ${roomId} by ${socket.id}`);
-    callback({ roomId, error: null });
+    
+    // Auto-join chat so no messages are missed
+    socket.join(`chat-${roomId}`);
+    console.log(`Socket ${socket.id} auto-joined chat for room ${roomId}`);
+    
+    console.log(`Room created and auto-joined: ${roomId} by ${socket.id} (host)`);
+    callback({ roomId, error: null, isHost: true, hostId: socket.id, autoJoined: true });
   } catch (error) {
     console.error('Error creating room:', error);
     callback({ roomId: null, error: error.message });
   }
 });
 
-    socket.on('joinRoom', async ({ roomId }, callback) => {
+    // Get room information for a socket
+    socket.on('getRoomInfo', ({ roomId }, callback) => {
         if (!rooms[roomId]) {
             callback({ error: 'Room does not exist' });
             return;
         }
+        
+        const room = rooms[roomId];
+        const isInRoom = room.peers.has(socket.id);
+        const isHost = room.host === socket.id;
+        
+        console.log(`Room info request for ${socket.id} in room ${roomId}: inRoom=${isInRoom}, isHost=${isHost}, hostId=${room.host}`);
+        
+        callback({ 
+            error: null, 
+            isInRoom, 
+            isHost, 
+            hostId: room.host,
+            roomId 
+        });
+    });
+
+    socket.on('joinRoom', async ({ roomId, isHostReconnecting }, callback) => {
+        if (!rooms[roomId]) {
+            callback({ error: 'Room does not exist' });
+            return;
+        }
+        
         // Check if the peer is already in this room
         if (rooms[roomId].peers.has(socket.id)) {
             console.log(`${socket.id} already in room: ${roomId}`);
-            callback({ error: null }); // Still success, just already there
+            const isHost = rooms[roomId].host === socket.id;
+            callback({ error: null, isHost, hostId: rooms[roomId].host }); // Include hostId
             return;
         }
         try {
             rooms[roomId].peers.add(socket.id);
             socket.join(roomId); // Join the Socket.IO room
-            console.log(`${socket.id} joined room: ${roomId}`);
-            callback({ error: null });
+            
+            // Auto-join chat so no messages are missed
+            socket.join(`chat-${roomId}`);
+            console.log(`Socket ${socket.id} auto-joined chat for room ${roomId}`);
+            
+            // Auto-join polls so no polls are missed
+            socket.join(`poll-${roomId}`);
+            console.log(`Socket ${socket.id} auto-joined polls for room ${roomId}`);
+            
+            const isHost = rooms[roomId].host === socket.id;
+            console.log(`${socket.id} joined room: ${roomId}${isHost ? ' (host)' : ''} - Host ID: ${rooms[roomId].host}`);
+            
+            // Send existing polls to the newly joined user
+            if (rooms[roomId].polls && rooms[roomId].polls.length > 0) {
+                rooms[roomId].polls.forEach(poll => {
+                    socket.emit('poll-created', poll);
+                    
+                    // Check if this user has already voted on this poll
+                    if (poll.userVotes && poll.userVotes.has(socket.id)) {
+                        const optionIndex = poll.userVotes.get(socket.id);
+                        socket.emit('user-voted', { pollId: poll.id, optionIndex });
+                        console.log(`Restored vote for user ${socket.id} on poll ${poll.id}, option ${optionIndex}`);
+                    }
+                });
+                console.log(`Sent ${rooms[roomId].polls.length} existing polls to ${socket.id}`);
+            }
+            
+            // Notify existing participants about the new participant
+            socket.to(roomId).emit('participant-joined', {
+                participantId: socket.id,
+                hostId: rooms[roomId].host,
+                roomId: roomId
+            });
+            
+            callback({ error: null, isHost, hostId: rooms[roomId].host }); // Include hostId
         } catch (error) {
             console.error(`Error joining room ${roomId}:`, error);
             callback({ error: error.message });
@@ -278,7 +351,12 @@ socket.on('disconnect', () => {
     });
 
   // GET RTP Capabilties
-  socket.on('getRtpCapabilities', (callback) => {
+  socket.on('getRtpCapabilities', (data, callback) => {
+        // Handle both old format (callback only) and new format (data, callback)
+        if (typeof data === 'function') {
+            callback = data;
+            data = {};
+        }
         // Find the room this socket belongs to
         let currentRoomId = null;
         for (const rId in rooms) {
@@ -394,7 +472,10 @@ socket.on('disconnect', () => {
                 console.log(`Producer ${producer.id} track ended for ${socket.id}`);
                 producer.close(); // Close producer if track ends
                 delete room.producers[producer.id];
-                peers.to(roomId).emit('producerClosed', { producerId: producer.id });
+                peers.to(roomId).emit('producerClosed', { 
+                    producerId: producer.id,
+                    appData: producer.appData 
+                });
             });
 
             room.producers[producer.id] = producer;
@@ -509,7 +590,8 @@ socket.on('disconnect', () => {
                     producerId: producer.id,
                     kind: consumer.kind,
                     rtpParameters: consumer.rtpParameters,
-                    peerId: producer.appData.socketId
+                    peerId: producer.appData.socketId,
+                    appData: producer.appData
                 },
                 error: null
             });
@@ -577,8 +659,355 @@ socket.on('disconnect', () => {
 //     recorders.delete(roomId);
 //     socket.emit('recordingStopped', roomId);
 //   });
+
+    // Chat functionality
+    socket.on('join-chat', ({ roomId }) => {
+        socket.join(`chat-${roomId}`);
+        console.log(`Socket ${socket.id} joined chat for room ${roomId}`);
+        socket.to(`chat-${roomId}`).emit('user-joined-chat', { userId: socket.id });
+    });
+
+    socket.on('send-message', ({ roomId, userId, message, timestamp }) => {
+        const messageData = {
+            userId,
+            message,
+            timestamp,
+            type: 'user'
+        };
+        // Broadcast to all users in the chat room including sender
+        peers.in(`chat-${roomId}`).emit('chat-message', messageData);
+        console.log(`Message sent in room ${roomId} by ${userId}: ${message}`);
+    });
+
+    socket.on('leave-chat', ({ roomId }) => {
+        socket.leave(`chat-${roomId}`);
+        socket.to(`chat-${roomId}`).emit('user-left-chat', { userId: socket.id });
+    });
+
+    // Status change functionality for mute/camera
+    socket.on('status-changed', ({ roomId, peerId, isMuted, isCameraOff }) => {
+        console.log(`Status changed for peer ${peerId} in room ${roomId}: muted=${isMuted}, camera=${isCameraOff}`);
+        // Broadcast status change to all other participants in the room
+        socket.to(roomId).emit('peer-status-changed', {
+            peerId,
+            isMuted,
+            isCameraOff
+        });
+    });
+
+    // Hand raise functionality
+    socket.on('raise-hand', ({ roomId, userId, userName }) => {
+        console.log(`Hand raised by ${userId} in room ${roomId}`);
+        const timestamp = new Date().toISOString();
+        // Broadcast to all participants in the room including sender
+        peers.to(roomId).emit('hand-raised', {
+            userId,
+            userName,
+            timestamp
+        });
+    });
+
+    socket.on('lower-hand', ({ roomId, userId }) => {
+        console.log(`Hand lowered by ${userId} in room ${roomId}`);
+        // Broadcast to all participants in the room including sender
+        peers.to(roomId).emit('hand-lowered', {
+            userId
+        });
+    });
+
+    socket.on('clear-all-hands', ({ roomId }) => {
+        console.log(`All hands cleared in room ${roomId}`);
+        // Broadcast to all participants in the room
+        peers.to(roomId).emit('hands-cleared');
+    });
+
+    // Handle remove participant (host only)
+    socket.on('remove-participant', ({ roomId, participantId }) => {
+        console.log(`Host ${socket.id} removing participant ${participantId} from room ${roomId}`);
+        
+        // Find the participant's socket
+        const participantSocket = peers.sockets.get(participantId);
+        if (participantSocket) {
+            // Notify the participant they are being removed
+            participantSocket.emit('removed-from-room', { roomId, reason: 'Removed by host' });
+            
+            // Force disconnect the participant
+            participantSocket.disconnect(true);
+            
+            // Notify other participants
+            socket.to(roomId).emit('participant-removed', { participantId });
+            
+            console.log(`Participant ${participantId} removed from room ${roomId}`);
+        } else {
+            console.log(`Participant ${participantId} not found`);
+        }
+    });
+
+    // Handle mute participant (host only)
+    socket.on('mute-participant', ({ roomId, participantId, shouldMute }) => {
+        console.log(`Host ${socket.id} ${shouldMute ? 'muting' : 'unmuting'} participant ${participantId} in room ${roomId}`);
+        
+        // Verify the requester is the host
+        if (rooms[roomId] && rooms[roomId].host === socket.id) {
+            // Find the participant's socket
+            const participantSocket = peers.sockets.get(participantId);
+            if (participantSocket) {
+                // Send mute command to the participant
+                participantSocket.emit('host-mute-request', { roomId, shouldMute });
+                console.log(`Mute request sent to participant ${participantId}`);
+            } else {
+                console.log(`Participant ${participantId} not found`);
+            }
+        } else {
+            console.log(`Unauthorized mute request from ${socket.id} - not the host`);
+        }
+    });
+
+    // Handle manual producer closure from clients (e.g., stopping screen share)
+    socket.on('producerClosed', ({ producerId, appData }) => {
+        console.log(`Client ${socket.id} manually closed producer ${producerId}`);
+        
+        // Find the room containing this producer
+        for (const roomId in rooms) {
+            const room = rooms[roomId];
+            const producer = room.producers[producerId];
+            
+            if (producer && producer.appData.socketId === socket.id) {
+                // Close the producer on server side
+                producer.close();
+                delete room.producers[producerId];
+                
+                // Notify all other clients in the room
+                socket.to(roomId).emit('producerClosed', {
+                    producerId,
+                    appData
+                });
+                
+                console.log(`Producer ${producerId} closed and other clients notified`);
+                break;
+            }
+        }
+    });
+
+    // Poll functionality
+    socket.on('create-poll', (pollData) => {
+        console.log(`Poll created by ${socket.id} in room ${pollData.roomId}:`, pollData.question);
+        
+        // Verify the creator is in the room and is the host
+        if (rooms[pollData.roomId] && rooms[pollData.roomId].host === socket.id) {
+            // Initialize polls array for room if it doesn't exist
+            if (!rooms[pollData.roomId].polls) {
+                rooms[pollData.roomId].polls = [];
+            }
+            
+            // Store poll in room data
+            rooms[pollData.roomId].polls.push(pollData);
+            
+            // Broadcast poll to all participants in the room (both general room and poll-specific room)
+            peers.in(pollData.roomId).emit('poll-created', pollData);
+            peers.in(`poll-${pollData.roomId}`).emit('poll-created', pollData);
+            console.log(`Poll ${pollData.id} created and broadcasted to room ${pollData.roomId}`);
+        } else {
+            console.log(`Unauthorized poll creation attempt by ${socket.id}`);
+        }
+    });
+
+    socket.on('vote-poll', ({ pollId, optionIndex, roomId }) => {
+        console.log(`Vote received from ${socket.id} for poll ${pollId}, option ${optionIndex}`);
+        
+        // Find the room and poll
+        if (rooms[roomId] && rooms[roomId].polls) {
+            const poll = rooms[roomId].polls.find(p => p.id === pollId);
+            
+            if (poll && poll.isActive) {
+                // Initialize voters array if it doesn't exist
+                if (!poll.voters) {
+                    poll.voters = [];
+                }
+                
+                // Initialize userVotes Map if it doesn't exist (for backward compatibility)
+                if (!poll.userVotes) {
+                    poll.userVotes = new Map();
+                }
+                
+                // Check if user has already voted
+                if (poll.userVotes.has(socket.id)) {
+                    console.log(`User ${socket.id} has already voted on poll ${pollId}`);
+                    return;
+                }
+                
+                // Record the vote with user-option mapping
+                if (!poll.userVotes) {
+                    poll.userVotes = new Map();
+                }
+                poll.voters.push(socket.id);
+                poll.userVotes.set(socket.id, optionIndex);
+                poll.votes[optionIndex]++;
+                poll.totalVotes++;
+                
+                // Notify the voter that their vote was recorded
+                socket.emit('user-voted', { pollId, optionIndex });
+                
+                // Broadcast updated vote counts to all participants
+                peers.in(roomId).emit('poll-vote-update', {
+                    pollId,
+                    votes: poll.votes,
+                    totalVotes: poll.totalVotes
+                });
+                peers.in(`poll-${roomId}`).emit('poll-vote-update', {
+                    pollId,
+                    votes: poll.votes,
+                    totalVotes: poll.totalVotes
+                });
+                
+                console.log(`Vote recorded for poll ${pollId}. New totals:`, poll.votes);
+            } else {
+                console.log(`Poll ${pollId} not found or not active`);
+            }
+        }
+    });
+
+    socket.on('remove-vote-poll', ({ pollId, roomId }) => {
+        console.log(`Vote removal request from ${socket.id} for poll ${pollId}`);
+        
+        // Find the room and poll
+        if (rooms[roomId] && rooms[roomId].polls) {
+            const poll = rooms[roomId].polls.find(p => p.id === pollId);
+            
+            if (poll && poll.isActive && poll.userVotes && poll.userVotes.has(socket.id)) {
+                const previousOptionIndex = poll.userVotes.get(socket.id);
+                
+                // Remove the vote
+                poll.userVotes.delete(socket.id);
+                poll.voters = poll.voters.filter(voterId => voterId !== socket.id);
+                poll.votes[previousOptionIndex]--;
+                poll.totalVotes--;
+                
+                // Notify the user that their vote was removed
+                socket.emit('user-vote-removed', { pollId });
+                
+                // Broadcast updated vote counts to all participants
+                peers.in(roomId).emit('poll-vote-update', {
+                    pollId,
+                    votes: poll.votes,
+                    totalVotes: poll.totalVotes
+                });
+                peers.in(`poll-${roomId}`).emit('poll-vote-update', {
+                    pollId,
+                    votes: poll.votes,
+                    totalVotes: poll.totalVotes
+                });
+                
+                console.log(`Vote removed for poll ${pollId}. New totals:`, poll.votes);
+            } else {
+                console.log(`Poll ${pollId} not found, not active, or user hasn't voted`);
+            }
+        }
+    });
+
+    socket.on('change-vote-poll', ({ pollId, optionIndex, roomId }) => {
+        console.log(`Vote change request from ${socket.id} for poll ${pollId}, new option ${optionIndex}`);
+        
+        // Find the room and poll
+        if (rooms[roomId] && rooms[roomId].polls) {
+            const poll = rooms[roomId].polls.find(p => p.id === pollId);
+            
+            if (poll && poll.isActive && poll.userVotes && poll.userVotes.has(socket.id)) {
+                const previousOptionIndex = poll.userVotes.get(socket.id);
+                
+                // Update the vote
+                poll.votes[previousOptionIndex]--;
+                poll.votes[optionIndex]++;
+                poll.userVotes.set(socket.id, optionIndex);
+                
+                // Notify the user that their vote was changed
+                socket.emit('user-voted', { pollId, optionIndex });
+                
+                // Broadcast updated vote counts to all participants
+                peers.in(roomId).emit('poll-vote-update', {
+                    pollId,
+                    votes: poll.votes,
+                    totalVotes: poll.totalVotes
+                });
+                peers.in(`poll-${roomId}`).emit('poll-vote-update', {
+                    pollId,
+                    votes: poll.votes,
+                    totalVotes: poll.totalVotes
+                });
+                
+                console.log(`Vote changed for poll ${pollId}. New totals:`, poll.votes);
+            } else {
+                console.log(`Poll ${pollId} not found, not active, or user hasn't voted`);
+            }
+        }
+    });
+
+    socket.on('close-poll', ({ pollId, roomId }) => {
+        console.log(`Poll close request from ${socket.id} for poll ${pollId}`);
+        
+        // Verify the requester is the host
+        if (rooms[roomId] && rooms[roomId].host === socket.id && rooms[roomId].polls) {
+            const poll = rooms[roomId].polls.find(p => p.id === pollId);
+            
+            if (poll && poll.isActive) {
+                poll.isActive = false;
+                poll.closedAt = new Date().toISOString();
+                
+                // Broadcast poll closure to all participants
+                peers.in(roomId).emit('poll-closed', {
+                    pollId,
+                    closedAt: poll.closedAt
+                });
+                peers.in(`poll-${roomId}`).emit('poll-closed', {
+                    pollId,
+                    closedAt: poll.closedAt
+                });
+                
+                console.log(`Poll ${pollId} closed by host`);
+            }
+        } else {
+            console.log(`Unauthorized poll close attempt by ${socket.id}`);
+        }
+    });
+
+    // Handle get-existing-polls request for late joiners
+    socket.on('get-existing-polls', ({ roomId }, callback) => {
+        console.log(`Get existing polls request from ${socket.id} for room ${roomId}`);
+        
+        if (rooms[roomId] && rooms[roomId].polls) {
+            const polls = rooms[roomId].polls;
+            const userVotes = {};
+            
+            // Collect user votes for this socket
+            polls.forEach(poll => {
+                if (poll.userVotes && poll.userVotes.has(socket.id)) {
+                    userVotes[poll.id] = poll.userVotes.get(socket.id);
+                }
+            });
+            
+            callback({
+                polls: polls,
+                userVotes: userVotes
+            });
+            
+            console.log(`Sent ${polls.length} existing polls to ${socket.id}`);
+        } else {
+            callback({
+                polls: [],
+                userVotes: {}
+            });
+        }
+    });
     
 });
+
+// API routes should go here before the catch-all
+
+// Serve React app for all routes (SPA support) - must be last
+// Catch-all handler for SPA routing
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'UI', 'frontend', 'dist', 'index.html'))
+})
 
 // Initialize mediasoup on server start
 initializeMediasoup().catch((error) => {
