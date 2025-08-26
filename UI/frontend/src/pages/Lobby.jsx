@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
-import socket from '../lib/socket'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import ScheduleMeetingModal from '../components/ScheduleMeetingModal'
+import socket from '../lib/socket'
 
 export default function Lobby() {
   const [roomId, setRoomId] = useState('')
@@ -87,6 +87,11 @@ export default function Lobby() {
 
     setIsCreating(true)
     try {
+      // Get user information
+      const userEmail = localStorage.getItem('userEmail') || sessionStorage.getItem('userEmail');
+      const userName = localStorage.getItem('userName') || sessionStorage.getItem('userName');
+      const userInfo = { name: userName || 'Anonymous', email: userEmail || '' };
+      
       socket.emit('createRoom', (response) => {
         setIsCreating(false)
         if (response.error) {
@@ -129,7 +134,12 @@ export default function Lobby() {
 
     setIsJoining(true)
     try {
-      socket.emit('joinRoom', { roomId: roomId.trim() }, (response) => {
+      // Get user information
+      const userEmail = localStorage.getItem('userEmail') || sessionStorage.getItem('userEmail');
+      const userName = localStorage.getItem('userName') || sessionStorage.getItem('userName');
+      const userInfo = { name: userName || 'Anonymous', email: userEmail || '' };
+      
+      socket.emit('joinRoom', { roomId: roomId.trim(), userInfo: userInfo }, (response) => {
         setIsJoining(false)
         if (response.error) {
           console.error('Error joining room:', response.error)
@@ -182,6 +192,33 @@ export default function Lobby() {
 
   return (
     <div className="new-lobby-container">
+      {/* Header with Logo */}
+      <header style={{ 
+        borderBottom: '1px solid #e5e7eb', 
+        background: '#ffffffcc', 
+        backdropFilter: 'blur(6px)',
+        position: 'sticky',
+        top: 0,
+        zIndex: 50
+      }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px' }}>
+          <div style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <img
+                src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/connective.jpg-PBlOuDu7PyDeHhj0QKFzOBHbrtt7j5.jpeg"
+                alt="Connective Logo"
+                style={{ height: 64, width: 64 }}
+              />
+              <span style={{ fontSize: 28, fontWeight: 700, color: '#1a73e8' }}>Connective</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <Link to="/" style={{ padding: '8px 12px', borderRadius: 8, color: '#111', textDecoration: 'none' }}>Home</Link>
+              <Link to="/auth" style={{ padding: '8px 12px', borderRadius: 8, color: '#111', textDecoration: 'none' }}>Sign In</Link>
+            </div>
+          </div>
+        </div>
+      </header>
+
       {/* Hero Section */}
       <div className="hero-section">
         <div className="hero-content">
@@ -276,20 +313,7 @@ export default function Lobby() {
         </div>
       </div>
       
-      {/* Features Section */}
-      <div className="features-section">
-        <div className="feature-card team-rooms">
-          <div className="feature-icon">👥</div>
-          <h4>Team Rooms</h4>
-          <p>Dedicated spaces</p>
-        </div>
-        
-        <div className="feature-card screen-share">
-          <div className="feature-icon">💻</div>
-          <h4>Screen Share</h4>
-          <p>HD quality</p>
-        </div>
-      </div>
+
       
       {/* Connection Status */}
       <div className="connection-status">

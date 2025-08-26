@@ -9,7 +9,8 @@ body {
   font-family: 'Google Sans', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   background-color: #202124;
   color: #e8eaed;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   line-height: 1.5;
 }
 
@@ -296,12 +297,16 @@ body {
 
 /* Features Section */
 .features-section {
-  display: flex;
-  justify-content: center;
-  gap: 40px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 24px;
   padding: 40px 80px;
   background: #f8f9fa;
+  max-width: 1200px;
+  margin: 0 auto;
 }
+
+
 
 .feature-card {
   background: white;
@@ -334,6 +339,67 @@ body {
 .feature-card p {
   font-size: 0.9rem;
   color: #666;
+  margin: 0;
+}
+
+/* Security Section */
+.security-section {
+  background: white;
+  padding: 60px 80px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.security-content {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.security-content h2 {
+  text-align: center;
+  font-size: 2.5rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 40px;
+}
+
+.security-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 32px;
+}
+
+.security-feature {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 24px;
+  background: #f8f9fa;
+  border-radius: 12px;
+  transition: all 0.3s ease;
+}
+
+.security-feature:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.security-icon {
+  font-size: 2rem;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.security-text h4 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 8px 0;
+}
+
+.security-text p {
+  font-size: 1rem;
+  color: #666;
+  line-height: 1.6;
   margin: 0;
 }
 
@@ -391,10 +457,15 @@ body {
     height: 210px;
   }
   
-  .join-meeting-section,
-  .features-section {
+  .join-meeting-section {
     padding: 30px 40px;
   }
+  
+  .security-features {
+    grid-template-columns: 1fr;
+  }
+  
+
 }
 
 @media (max-width: 768px) {

@@ -1,14 +1,68 @@
 
+import dotenv from 'dotenv'
+// Load environment variables first
+dotenv.config()
+
+import pgSession from 'connect-pg-simple'
+import cookieParser from 'cookie-parser'
+import cors from 'cors'
 import express from 'express'
+import session from 'express-session'
 import https from 'httpolyglot'
 import mediasoup from 'mediasoup'
 import path from 'path'
 import { Server } from 'socket.io'
 import { v4 as uuidv4 } from 'uuid'
+import passport from './config/passport.js'
+import { User } from './models/User.js'
+import authRoutes from './routes/auth.js'
 
 const __dirname = path.resolve()
 const app = express()
-const PORT = 4000
+const PORT = process.env.PORT || 4000
+
+// Middleware
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true
+}))
+app.use(express.json())
+app.use(express.urlencoded({ extended: true }))
+app.use(cookieParser())
+
+// Session configuration
+const PostgresStore = pgSession(session)
+app.use(session({
+          store: new PostgresStore({
+          conString: process.env.PG_SESSION_CONSTRING,
+          tableName: 'sessions'
+        }),
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}))
+
+// Initialize Passport
+app.use(passport.initialize())
+app.use(passport.session())
+
+// Initialize database tables
+const initializeDatabase = async () => {
+  try {
+    await User.createTable()
+    console.log('Database tables initialized')
+  } catch (error) {
+    console.error('Database initialization error:', error)
+  }
+}
+
+// Auth routes
+app.use('/auth', authRoutes)
 
 // Serve React build files
 app.use(express.static(path.join(__dirname, 'UI', 'frontend', 'dist')))
@@ -202,6 +256,9 @@ socket.on('disconnect', () => {
 
     /* 4. Remove this socket from the room peer list */
     room.peers.delete(socket.id);
+    
+    // Remove user information
+    room.peerInfo.delete(socket.id);
 
     // Notify other peers about disconnection
     socket.to(roomId).emit('peerDisconnected', { peerId: socket.id });
@@ -251,6 +308,7 @@ socket.on('cleanupOldPeerTiles', ({ roomId, oldSocketId }) => {
       producers: {},
       consumers: {},
       peers: new Set(),
+      peerInfo: new Map(), // Store participant info (socketId -> userInfo)
       audioLevelObserver, // keep reference so we can add producers later
       host: socket.id // Track the room creator as host
     };
@@ -258,6 +316,10 @@ socket.on('cleanupOldPeerTiles', ({ roomId, oldSocketId }) => {
     // Auto-join the room after creation to maintain same socket connection
     rooms[roomId].peers.add(socket.id);
     socket.join(roomId);
+    
+    // Store user information for the host (creator)
+    // Note: We'll get userInfo from the frontend when they actually join the room
+    // For now, we'll store a placeholder that will be updated when they join
     
     // Auto-join chat so no messages are missed
     socket.join(`chat-${roomId}`);
@@ -293,7 +355,33 @@ socket.on('cleanupOldPeerTiles', ({ roomId, oldSocketId }) => {
         });
     });
 
-    socket.on('joinRoom', async ({ roomId, isHostReconnecting }, callback) => {
+    // Get all participants in a room
+    socket.on('getParticipants', ({ roomId }, callback) => {
+        if (!rooms[roomId]) {
+            callback({ error: 'Room does not exist' });
+            return;
+        }
+        
+        const room = rooms[roomId];
+        const participants = [];
+        
+        room.peers.forEach(peerId => {
+            const userInfo = room.peerInfo.get(peerId) || { name: 'Anonymous', email: '' };
+            participants.push({
+                id: peerId,
+                name: userInfo.name,
+                email: userInfo.email,
+                isHost: peerId === room.host
+            });
+        });
+        
+        callback({ 
+            error: null, 
+            participants 
+        });
+    });
+
+    socket.on('joinRoom', async ({ roomId, isHostReconnecting, userInfo }, callback) => {
         if (!rooms[roomId]) {
             callback({ error: 'Room does not exist' });
             return;
@@ -309,6 +397,12 @@ socket.on('cleanupOldPeerTiles', ({ roomId, oldSocketId }) => {
         try {
             rooms[roomId].peers.add(socket.id);
             socket.join(roomId); // Join the Socket.IO room
+            
+            // Store user information
+            if (userInfo) {
+                rooms[roomId].peerInfo.set(socket.id, userInfo);
+                console.log(`Stored user info for ${socket.id}:`, userInfo);
+            }
             
             // Auto-join chat so no messages are missed
             socket.join(`chat-${roomId}`);
@@ -339,6 +433,7 @@ socket.on('cleanupOldPeerTiles', ({ roomId, oldSocketId }) => {
             // Notify existing participants about the new participant
             socket.to(roomId).emit('participant-joined', {
                 participantId: socket.id,
+                userInfo: userInfo || { name: 'Anonymous', email: '' },
                 hostId: rooms[roomId].host,
                 roomId: roomId
             });
@@ -1001,16 +1096,22 @@ socket.on('cleanupOldPeerTiles', ({ roomId, oldSocketId }) => {
     
 });
 
-// API routes should go here before the catch-all
-
 // Serve React app for all routes (SPA support) - must be last
 // Catch-all handler for SPA routing
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'UI', 'frontend', 'dist', 'index.html'))
 })
 
-// Initialize mediasoup on server start
-initializeMediasoup().catch((error) => {
-  console.error('Failed to initialize mediasoup:', error)
-  process.exit(1)
-})
+// Initialize everything on server start
+const initializeServer = async () => {
+  try {
+    await initializeDatabase()
+    await initializeMediasoup()
+    console.log('Server initialized successfully')
+  } catch (error) {
+    console.error('Server initialization failed:', error)
+    process.exit(1)
+  }
+}
+
+initializeServer()

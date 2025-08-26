@@ -1,11 +1,10 @@
 /* eslint-disable no-unused-vars */
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import io from 'socket.io-client';
 import * as mediasoupClient from 'mediasoup-client';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import ChatBox from '../components/ChatBox';
-import ParticipantList from '../components/ParticipantList';
 import HandRaise from '../components/HandRaise';
+import ParticipantList from '../components/ParticipantList';
 import PollBox from '../components/PollBox';
 import socket from '../lib/socket';
 import './Room.css';
@@ -103,6 +102,7 @@ const Room = () => {
   const [participantJoinTimes, setParticipantJoinTimes] = useState(new Map())
   const [roomJoinTime, setRoomJoinTime] = useState(null)
   const [remotePeerStatus, setRemotePeerStatus] = useState(new Map()) // Track remote peer mute/camera status
+  const [currentUserInfo, setCurrentUserInfo] = useState(null) // Store current user info
   
   // Producer state to avoid cross-tab conflicts
   const [videoProducer, setVideoProducer] = useState(null);
@@ -113,6 +113,40 @@ const Room = () => {
   
   const localVideoRef = useRef();
   const remoteVideosRef = useRef();
+
+  // Function to get current user information from database
+  const getCurrentUserInfo = async () => {
+    try {
+      // Get user info from localStorage or session
+      const userEmail = localStorage.getItem('userEmail') || sessionStorage.getItem('userEmail');
+      const userName = localStorage.getItem('userName') || sessionStorage.getItem('userName');
+      
+      if (userEmail && userName) {
+        setCurrentUserInfo({
+          name: userName,
+          email: userEmail
+        });
+        return { name: userName, email: userEmail };
+      }
+      
+      // If not in storage, try to get from database via API
+      const response = await fetch('/api/user/current', {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const userData = await response.json();
+        setCurrentUserInfo(userData);
+        return userData;
+      }
+      
+      // Fallback to anonymous
+      return { name: 'Anonymous', email: '' };
+    } catch (error) {
+      console.error('Error getting user info:', error);
+      return { name: 'Anonymous', email: '' };
+    }
+  };
 
   // Function to update participants list
   // Function to update video tile labels when host status changes
@@ -131,8 +165,12 @@ const Room = () => {
         const isScreenShare = video.dataset.mediaType === 'screenShare';
         
         if (!isScreenShare) {
+          // Get participant name from participants list
+          const participant = participants.find(p => p.id === peerId);
+          const displayName = participant ? participant.name : `Client ${peerId.substring(0, 8)}`;
+          
           // Update label text and styling for non-screen share videos
-          label.textContent = `${isHostPeer ? '👑 ' : ''}Client ${peerId.substring(0, 8)}`;
+          label.textContent = `${isHostPeer ? '👑 ' : ''}${displayName}`;
           if (isHostPeer) {
             label.style.background = 'rgba(16, 185, 129, 0.9)';
             label.style.border = '1px solid rgba(16, 185, 129, 0.3)';
@@ -159,7 +197,7 @@ const Room = () => {
     // Add current user
     participantList.push({
       id: socket?.id || 'anonymous',
-      name: 'You',
+      name: currentUserInfo?.name || 'You',
       isHost: isHost,
       isMuted: !isMicOn,
       isCameraOff: !isCamOn,
@@ -181,9 +219,12 @@ const Room = () => {
       const joinTime = participantJoinTimes.get(peerId);
       console.log(`Participant ${peerId}: isHost=${isRemoteHost}, hostId=${hostId}, joinTime=${joinTime}`);
       
+      // Try to get participant name from server
+      const participantName = getParticipantName(peerId);
+      
       participantList.push({
         id: peerId,
-        name: `Client ${peerId.substring(0, 8)}`, // Match video tile naming
+        name: participantName || `Client ${peerId.substring(0, 8)}`, // Use name from server or fallback
         isHost: isRemoteHost,
         isMuted: remotePeerStatus.get(peerId)?.isMuted || false,
         isCameraOff: remotePeerStatus.get(peerId)?.isCameraOff || false,
@@ -196,11 +237,17 @@ const Room = () => {
     setParticipants(participantList);
   };
 
+  // Function to get participant name from participants state
+  const getParticipantName = (peerId) => {
+    const participant = participants.find(p => p.id === peerId);
+    return participant ? participant.name : null;
+  };
+
   // Exact functions from index.js
-  function addRemoteMedia(producerId, track, kind, peerId, appData, isNewProducer = false, currentHostId = null) { // Add currentHostId parameter
+  function addRemoteMedia(producerId, track, kind, peerId, appData, isNewProducer = false) { // Add isNewProducer parameter
     if (consumers.has(producerId)) return;
 
-    console.log('Adding remote media:', { producerId, kind, peerId, isNewProducer, currentHostId });
+    console.log('Adding remote media:', { producerId, kind, peerId, isNewProducer });
     console.log('remoteVideosRef.current:', remoteVideosRef.current);
 
     let el;
@@ -263,9 +310,7 @@ const Room = () => {
       
       const label = document.createElement('span');
       label.className = 'peer-label';
-      // Use passed hostId or fall back to state hostId
-      const effectiveHostId = currentHostId || hostId;
-      const isHostPeer = peerId === effectiveHostId;
+      const isHostPeer = peerId === hostId;
       const isScreenShare = appData && appData.mediaType === 'screenShare';
       
       if (isScreenShare) {
@@ -331,7 +376,7 @@ const Room = () => {
     // Store peerId with consumer entry
     consumers.set(producerId, { el, consumer: null, peerId }); // Add peerId here
     
-    console.log()
+    console.log(hostId);
     // Update participants list when new media is added
     updateParticipants();
   }
@@ -668,7 +713,7 @@ const Room = () => {
     });
   };
 
-  const connectRecvTransport = async (producerInfo, isNewProducer = false, currentHostId = null) => {
+  const connectRecvTransport = async (producerInfo, isNewProducer = false) => {
     try {
       const consumer = await consumerTransport.consume({
         id: producerInfo.id,
@@ -678,9 +723,7 @@ const Room = () => {
       });
 
       const { track } = consumer;
-      // Use passed hostId or fall back to state hostId
-      const effectiveHostId = currentHostId || hostId;
-      addRemoteMedia(producerInfo.producerId, track, producerInfo.kind, producerInfo.peerId, producerInfo.appData, isNewProducer, effectiveHostId);
+      addRemoteMedia(producerInfo.producerId, track, producerInfo.kind, producerInfo.peerId, producerInfo.appData, isNewProducer);
       
       // Store consumer
       const entry = consumers.get(producerInfo.producerId) || {};
@@ -1058,18 +1101,14 @@ const Room = () => {
           });
         }
         
-        // Get final host values for immediate use
-        const finalIsHost = response?.isHost || localStorage.getItem(`room_${roomId}_was_host`) === 'true';
-        const finalHostId = response?.hostId || localStorage.getItem(`room_${roomId}_host_id`) || socket.id;
-        
         // Set room join time for current user
         const joinTime = new Date();
         setRoomJoinTime(joinTime);
         setParticipantJoinTimes(prev => new Map(prev.set(socket.id, joinTime)));
         
         console.log('Auto-join setup complete:', {
-          isHost: finalIsHost,
-          hostId: finalHostId,
+          isHost: response?.isHost || localStorage.getItem(`room_${roomId}_was_host`) === 'true',
+          hostId: response?.hostId || localStorage.getItem(`room_${roomId}_host_id`) || socket.id,
           currentSocketId: socket.id
         });
         
@@ -1079,8 +1118,8 @@ const Room = () => {
             // Set up Mediasoup pipeline after server confirms room membership
             await setupMediasoupPipeline();
             
-            // Request existing producers with hostId context
-            requestExistingProducers(finalHostId);
+            // Request existing producers
+            requestExistingProducers();
             
             // Mark as successfully joined
         setIsInRoom(true);
@@ -1111,8 +1150,11 @@ const Room = () => {
     }
 
     try {
+      // Get user information before joining
+      const userInfo = await getCurrentUserInfo();
+      
       // Inform the server about joining a room
-      socket.emit('joinRoom', { roomId: roomId }, async (response) => {
+      socket.emit('joinRoom', { roomId: roomId, userInfo: userInfo }, async (response) => {
         if (response.error) {
           console.error('Error joining room:', response.error);
           alert('Failed to join room: ' + response.error);
@@ -1163,6 +1205,27 @@ const Room = () => {
         setIsInRoom(true);
         console.log('Regular join completed, setIsInRoom(true) called');
         
+        // Get all participants from server
+        socket.emit('getParticipants', { roomId }, (response) => {
+          if (!response.error && response.participants) {
+            console.log('Received participants from server:', response.participants);
+            // Update participants list with names from server
+            setParticipants(prev => {
+              const updatedParticipants = [...prev];
+              response.participants.forEach(serverParticipant => {
+                const existingIndex = updatedParticipants.findIndex(p => p.id === serverParticipant.id);
+                if (existingIndex >= 0) {
+                  updatedParticipants[existingIndex] = {
+                    ...updatedParticipants[existingIndex],
+                    name: serverParticipant.name
+                  };
+                }
+              });
+              return updatedParticipants;
+            });
+          }
+        });
+        
         // Note: User is already auto-joined to chat on server side during joinRoom
         // No need to emit join-chat again to avoid duplicate join messages
         
@@ -1183,7 +1246,7 @@ const Room = () => {
     }
   };
 
-  const requestExistingProducers = (currentHostId) => {
+  const requestExistingProducers = () => {
     console.log("trying to get the producers in the room");
     const myPids = [videoProducer?.id, audioProducer?.id].filter(Boolean);
 
@@ -1202,7 +1265,7 @@ const Room = () => {
               return;
             }
             console.log('Consumer response for existing producer:', consumerResponse.params);
-                connectRecvTransport(consumerResponse.params, false, currentHostId); // Existing producer, no notification, with hostId
+                connectRecvTransport(consumerResponse.params, false); // Existing producer, no notification
           });
         }
       });
@@ -1334,12 +1397,32 @@ const Room = () => {
     });
 
     // Listen for participant joined events
-    socket.on('participant-joined', ({ participantId, hostId: serverHostId, roomId: joinedRoomId }) => {
-      console.log(`Participant ${participantId} joined room ${joinedRoomId}, server hostId: ${serverHostId}`);
+    socket.on('participant-joined', ({ participantId, userInfo, hostId: serverHostId, roomId: joinedRoomId }) => {
+      console.log(`Participant ${participantId} joined room ${joinedRoomId}, server hostId: ${serverHostId}`, userInfo);
       if (joinedRoomId === roomId) {
         // Track join time for new participant
         const currentTime = new Date();
         setParticipantJoinTimes(prev => new Map(prev.set(participantId, currentTime)));
+        
+        // Store participant information for name lookup
+        if (userInfo) {
+          setParticipants(prev => {
+            const existing = prev.find(p => p.id === participantId);
+            if (existing) {
+              return prev.map(p => p.id === participantId ? { ...p, name: userInfo.name } : p);
+            } else {
+              return [...prev, {
+                id: participantId,
+                name: userInfo.name,
+                isHost: participantId === serverHostId,
+                isMuted: false,
+                isCameraOff: false,
+                joinedAt: currentTime,
+                isCurrentUser: false
+              }];
+            }
+          });
+        }
         
         // Only update hostId if it's different, but don't change isHost status
         // The isHost status should only be set during initial room join or host-changed events
