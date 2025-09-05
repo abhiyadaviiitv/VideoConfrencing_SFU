@@ -5,13 +5,14 @@ import { Pool } from 'pg'
 dotenv.config() // loads .env variables
 
 const pool = new Pool({
-  host: process.env.PG_HOST, 
-  port: process.env.PG_PORT, 
-  database: process.env.PG_DATABASE,
-  user: process.env.PG_USER, 
-  password: process.env.PG_PASSWORD,
+  host: process.env.DB_HOST, 
+  port: process.env.DB_PORT, 
+  database: process.env.DB_NAME,
+  user: process.env.DB_USER, 
+  password: process.env.DB_PASSWORD,
   ssl: { 
-    rejectUnauthorized: false
+    rejectUnauthorized: false,
+    ca: process.env.DB_CA_CERT || undefined
   }
 })
 
@@ -109,6 +110,38 @@ export class User {
   static async update(id, updates) {
     const client = await pool.connect()
     try {
+      const fields = Object.keys(updates)
+      const values = Object.values(updates)
+      const setClause = fields.map((field, index) => `${field} = $${index + 2}`).join(', ')
+      
+      const result = await client.query(
+        `UPDATE users SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
+        [id, ...values]
+      )
+      
+      return result.rows[0]
+    } finally {
+      client.release()
+    }
+  }
+
+  static async updateProfile(id, profileData) {
+    const client = await pool.connect()
+    try {
+      const allowedFields = ['name', 'avatar_url']
+      const updates = {}
+      
+      // Only allow specific fields to be updated
+      for (const field of allowedFields) {
+        if (profileData[field] !== undefined) {
+          updates[field] = profileData[field]
+        }
+      }
+      
+      if (Object.keys(updates).length === 0) {
+        return await this.findById(id)
+      }
+      
       const fields = Object.keys(updates)
       const values = Object.values(updates)
       const setClause = fields.map((field, index) => `${field} = $${index + 2}`).join(', ')

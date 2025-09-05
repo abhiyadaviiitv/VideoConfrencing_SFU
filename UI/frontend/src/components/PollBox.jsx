@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import './PollBox.css'
 
 export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket, isHost }) {
@@ -9,6 +9,35 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
   const [isCreatingPoll, setIsCreatingPoll] = useState(false)
   const [userVotes, setUserVotes] = useState(new Map())
   const [notification, setNotification] = useState(null) // Track user votes
+  const [pollDuration, setPollDuration] = useState(0) // 0 = no duration
+  const [isAnonymous, setIsAnonymous] = useState(false)
+  const [allowMultiple, setAllowMultiple] = useState(false)
+  const [selectedTemplate, setSelectedTemplate] = useState('')
+  const [timeRemaining, setTimeRemaining] = useState(null)
+
+  // Poll templates for quick creation
+  const pollTemplates = [
+    {
+      name: 'Yes/No',
+      question: 'Do you agree?',
+      options: ['Yes', 'No']
+    },
+    {
+      name: 'Rating',
+      question: 'How would you rate this?',
+      options: ['Excellent', 'Good', 'Fair', 'Poor']
+    },
+    {
+      name: 'Multiple Choice',
+      question: 'Which option do you prefer?',
+      options: ['Option A', 'Option B', 'Option C', 'Option D']
+    },
+    {
+      name: 'Meeting Time',
+      question: 'What time works best for you?',
+      options: ['Morning', 'Afternoon', 'Evening']
+    }
+  ]
 
   // Request existing polls when component mounts or socket changes
   useEffect(() => {
@@ -136,6 +165,36 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
     }
   }, [socket, activePoll, currentUserId]) // Removed isOpen dependency
 
+  // Handle poll timer countdown
+  useEffect(() => {
+    let timer
+    if (activePoll && activePoll.duration && activePoll.isActive) {
+      const endTime = new Date(activePoll.createdAt).getTime() + (activePoll.duration * 60 * 1000)
+      
+      timer = setInterval(() => {
+        const now = Date.now()
+        const remaining = Math.max(0, endTime - now)
+        
+        if (remaining > 0) {
+          setTimeRemaining(remaining)
+        } else {
+          setTimeRemaining(0)
+          // Auto-close poll when time expires (host only)
+          if (isHost) {
+            socket.emit('poll-timer-expired', { pollId: activePoll.id, roomId });
+          }
+          clearInterval(timer)
+        }
+      }, 1000)
+    } else {
+      setTimeRemaining(null)
+    }
+
+    return () => {
+      if (timer) clearInterval(timer)
+    }
+  }, [activePoll, isHost])
+
   const addOption = () => {
     if (newPollOptions.length < 6) {
       setNewPollOptions([...newPollOptions, ''])
@@ -175,15 +234,24 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
       isActive: true,
       votes: validOptions.map(() => 0),
       totalVotes: 0,
-      voters: [], // Initialize empty voters array
+      voters: [],
+      duration: pollDuration,
+      isAnonymous,
+      allowMultiple,
       roomId
     }
 
+    // Optimistically set as active poll to reflect immediately in UI
+    setActivePoll(pollData)
     socket.emit('create-poll', pollData)
     
     // Reset form
     setNewPollQuestion('')
     setNewPollOptions(['', ''])
+    setPollDuration(0)
+    setIsAnonymous(false)
+    setAllowMultiple(false)
+    setSelectedTemplate('')
     setIsCreatingPoll(false)
   }
 
@@ -212,6 +280,19 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
       minute: '2-digit',
       hour12: false
     })
+  }
+
+  const formatTimeRemaining = (milliseconds) => {
+    const totalSeconds = Math.floor(milliseconds / 1000)
+    const minutes = Math.floor(totalSeconds / 60)
+    const seconds = totalSeconds % 60
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`
+  }
+
+  const applyTemplate = (template) => {
+    setNewPollQuestion(template.question)
+    setNewPollOptions([...template.options])
+    setSelectedTemplate(template.name)
   }
 
   const getVotePercentage = (votes, optionIndex, totalVotes) => {
@@ -259,6 +340,25 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
               ) : (
                 <div className="poll-form">
                   <h4>Create New Poll</h4>
+                  
+                  {/* Poll Templates */}
+                  <div className="poll-templates">
+                    <label>Quick Templates:</label>
+                    <div className="template-buttons">
+                      {pollTemplates.map((template) => (
+                        <button
+                          key={template.name}
+                          onClick={() => applyTemplate(template)}
+                          className={`template-btn ${
+                            selectedTemplate === template.name ? 'active' : ''
+                          }`}
+                        >
+                          {template.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <input
                     type="text"
                     placeholder="Enter your poll question..."
@@ -295,6 +395,52 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
                       </button>
                     )}
                   </div>
+
+                  {/* Poll Settings */}
+                  <div className="poll-settings">
+                    <h5>Poll Settings</h5>
+                    
+                    <div className="setting-group">
+                      <label>Duration (minutes):</label>
+                      <select 
+                        value={pollDuration} 
+                        onChange={(e) => setPollDuration(Number(e.target.value))}
+                        className="duration-select"
+                      >
+                        <option value={0}>No time limit</option>
+                        <option value={1}>1 minute</option>
+                        <option value={2}>2 minutes</option>
+                        <option value={5}>5 minutes</option>
+                        <option value={10}>10 minutes</option>
+                        <option value={15}>15 minutes</option>
+                        <option value={30}>30 minutes</option>
+                      </select>
+                    </div>
+
+                    <div className="setting-group">
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={isAnonymous}
+                          onChange={(e) => setIsAnonymous(e.target.checked)}
+                        />
+                        <span className="checkmark"></span>
+                        Anonymous voting
+                      </label>
+                    </div>
+
+                    <div className="setting-group">
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={allowMultiple}
+                          onChange={(e) => setAllowMultiple(e.target.checked)}
+                        />
+                        <span className="checkmark"></span>
+                        Allow multiple choices
+                      </label>
+                    </div>
+                  </div>
                   
                   <div className="poll-form-actions">
                     <button onClick={createPoll} className="create-btn">
@@ -319,12 +465,27 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
           {/* Active Poll */}
           {activePoll && activePoll.isActive && (
             <div className="active-poll">
-              <h4>🔴 Active Poll</h4>
+              <div className="active-poll-header">
+                <h4>🔴 Active Poll</h4>
+                {timeRemaining !== null && (
+                  <div className="poll-timer">
+                    <span className="timer-icon">⏱️</span>
+                    <span className="timer-text">{formatTimeRemaining(timeRemaining)}</span>
+                  </div>
+                )}
+              </div>
               <div className="poll-item">
                 <div className="poll-question">{activePoll.question}</div>
                 <div className="poll-meta">
-                  Created by {activePoll.createdBy === currentUserId ? 'You' : `User ${activePoll.createdBy.slice(-6)}`} • 
+                  Created by {activePoll.isAnonymous ? 'Anonymous' : 
+                    (activePoll.createdBy === currentUserId ? 'You' : `User ${activePoll.createdBy.slice(-6)}`)} • 
                   {formatTime(activePoll.createdAt)}
+                  {activePoll.duration > 0 && (
+                    <span className="duration-info"> • {activePoll.duration} min duration</span>
+                  )}
+                  {activePoll.allowMultiple && (
+                    <span className="multiple-info"> • Multiple choices allowed</span>
+                  )}
                 </div>
                 
                 <div className="poll-options-list">
@@ -413,7 +574,7 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
                             <div key={index} className="result-option">
                               <div className="option-header">
                                 <span className="option-text">{option}</span>
-                                <span className="vote-count">
+                                <span className="result-vote-count">
                                   {poll.votes[index]} ({percentage}%)
                                 </span>
                               </div>

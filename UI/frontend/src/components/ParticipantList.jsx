@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars */
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
-export default function ParticipantList({ isOpen, onClose, roomId, currentUserId, isHost, hostId, participants = [], onRemoveParticipant, onMuteParticipant }) {
+export default function ParticipantList({ isOpen, onClose, roomId, currentUserId, isHost, hostId, participants = [], participantProfiles = new Map(), onRemoveParticipant, onMuteParticipant }) {
   const [isConnected, setIsConnected] = useState(false)
 
   useEffect(() => {
@@ -33,6 +33,20 @@ export default function ParticipantList({ isOpen, onClose, roomId, currentUserId
     return statuses.join(' • ')
   }
 
+  const getParticipantName = (participant) => {
+    const profile = participantProfiles.get(participant.id)
+    return profile ? profile.name : participant.name
+  }
+
+  const getParticipantAvatar = (participant) => {
+    const profile = participantProfiles.get(participant.id)
+    const url = profile ? profile.avatar_url : null
+    if (!url) return null
+    if (url.startsWith('http')) return url
+    const apiBase = import.meta?.env?.VITE_API_BASE_URL
+    return apiBase ? `${apiBase}${url}` : url
+  }
+
   if (!isOpen) return null
 
   return (
@@ -60,7 +74,34 @@ export default function ParticipantList({ isOpen, onClose, roomId, currentUserId
               >
                 <div className="participant-avatar">
                   <div className="avatar-circle">
-                    {participant.id === hostId ? '👑' : '👤'}
+                    {getParticipantAvatar(participant) ? (
+                      <img 
+                        src={getParticipantAvatar(participant)} 
+                        alt={getParticipantName(participant)}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          borderRadius: '50%',
+                          objectFit: 'cover'
+                        }}
+                        onError={(e) => {
+                          e.target.style.display = 'none'
+                          e.target.nextSibling.style.display = 'flex'
+                        }}
+                      />
+                    ) : null}
+                    <div 
+                      style={{
+                        display: getParticipantAvatar(participant) ? 'none' : 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '100%',
+                        height: '100%',
+                        fontSize: '18px'
+                      }}
+                    >
+                      {participant.id === hostId ? '👑' : '👤'}
+                    </div>
                   </div>
                   <div className="participant-indicators">
                     {participant.isMuted && <span className="indicator muted">🔇</span>}
@@ -70,7 +111,7 @@ export default function ParticipantList({ isOpen, onClose, roomId, currentUserId
                 
                 <div className="participant-info">
                   <div className="participant-name">
-                    {participant.name}
+                    {getParticipantName(participant)}
                     {participant.id === currentUserId && <span className="you-badge"> (You)</span>}
                   </div>
                   <div className="participant-details">

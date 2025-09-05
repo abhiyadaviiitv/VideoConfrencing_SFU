@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import ProfileDropdown from '../components/ProfileDropdown'
 import ScheduleMeetingModal from '../components/ScheduleMeetingModal'
+import { useAuth } from '../contexts/AuthContext'
 import socket from '../lib/socket'
 
 export default function Lobby() {
+  const { user, isAuthenticated } = useAuth()
   const [roomId, setRoomId] = useState('')
   const [isConnected, setIsConnected] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
@@ -14,6 +17,17 @@ export default function Lobby() {
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false)
   const videoRef = useRef(null)
   const navigate = useNavigate()
+
+  // Store user info in localStorage for server to use
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem('userEmail', user.email)
+      localStorage.setItem('userName', user.name)
+      if (user.avatar_url) {
+        localStorage.setItem('userAvatar', user.avatar_url)
+      }
+    }
+  }, [user])
 
   useEffect(() => {
     // Check socket connection status
@@ -213,7 +227,11 @@ export default function Lobby() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <Link to="/" style={{ padding: '8px 12px', borderRadius: 8, color: '#111', textDecoration: 'none' }}>Home</Link>
-              <Link to="/auth" style={{ padding: '8px 12px', borderRadius: 8, color: '#111', textDecoration: 'none' }}>Sign In</Link>
+              {isAuthenticated ? (
+                <ProfileDropdown />
+              ) : (
+                <Link to="/auth" style={{ padding: '8px 12px', borderRadius: 8, color: '#111', textDecoration: 'none' }}>Sign In</Link>
+              )}
             </div>
           </div>
         </div>
@@ -231,87 +249,107 @@ export default function Lobby() {
           </p>
           
           <div className="hero-actions">
-            <button 
-              onClick={createRoom}
-              disabled={!isConnected || isCreating}
-              className={`start-meeting-btn ${isCreating ? 'loading' : ''}`}
-            >
-              <span className="btn-icon">📹</span>
-              {isCreating ? 'Creating...' : 'Start New Meeting'}
-            </button>
-            
-            <button 
-              onClick={scheduleNewMeeting}
-              className="schedule-meeting-btn"
-            >
-              <span className="btn-icon">📅</span>
-              Schedule Meeting
-            </button>
+            {isAuthenticated ? (
+              <>
+                <button 
+                  onClick={createRoom}
+                  disabled={!isConnected || isCreating}
+                  className={`start-meeting-btn ${isCreating ? 'loading' : ''}`}
+                >
+                  <span className="btn-icon">📹</span>
+                  {isCreating ? 'Creating...' : 'Start New Meeting'}
+                </button>
+                
+                <button 
+                  onClick={scheduleNewMeeting}
+                  className="schedule-meeting-btn"
+                >
+                  <span className="btn-icon">📅</span>
+                  Schedule Meeting
+                </button>
+              </>
+            ) : (
+              <>
+                <Link to="/auth" className="start-meeting-btn" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <span className="btn-icon">🔐</span>
+                  Sign In to Start
+                </Link>
+                
+                <Link to="/auth" className="schedule-meeting-btn" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <span className="btn-icon">📝</span>
+                  Create Account
+                </Link>
+              </>
+            )}
           </div>
         </div>
         
-        {/* Local Video Preview */}
-        <div className="video-preview-section">
-          <div className="preview-container">
-            <div className="preview-label">Preview Mode</div>
-            <video 
-              ref={videoRef}
-              autoPlay 
-              muted 
-              playsInline
-              className="local-video-preview"
-            />
-            {!isVideoEnabled && (
-              <div className="video-disabled-overlay">
-                <span>📷</span>
-                <p>Camera Off</p>
+        {/* Local Video Preview - Only for authenticated users */}
+        {isAuthenticated && (
+          <div className="video-preview-section">
+            <div className="preview-container">
+              <div className="preview-label">Preview Mode</div>
+              <video 
+                ref={videoRef}
+                autoPlay 
+                muted 
+                playsInline
+                className="local-video-preview"
+              />
+              {!isVideoEnabled && (
+                <div className="video-disabled-overlay">
+                  <span>📷</span>
+                  <p>Camera Off</p>
+                </div>
+              )}
+              
+              {/* Video Controls */}
+              <div className="preview-controls">
+                <button 
+                  onClick={toggleMic}
+                  className={`control-btn ${!isMicEnabled ? 'disabled' : ''}`}
+                  title={isMicEnabled ? 'Mute' : 'Unmute'}
+                >
+                  {isMicEnabled ? '🎤' : '🔇'}
+                </button>
+                <button 
+                  onClick={toggleVideo}
+                  className={`control-btn ${!isVideoEnabled ? 'disabled' : ''}`}
+                  title={isVideoEnabled ? 'Turn off camera' : 'Turn on camera'}
+                >
+                  {isVideoEnabled ? '📹' : '📷'}
+                </button>
               </div>
-            )}
-            
-            {/* Video Controls */}
-            <div className="preview-controls">
+            </div>
+          </div>
+        )}
+      </div>
+      
+      {/* Join Meeting Section */}
+      {isAuthenticated && (
+        <div className="join-meeting-section">
+          <div className="join-container">
+            <h3>Join a Meeting</h3>
+            <div className="join-input-group">
+              <input
+                value={roomId}
+                onChange={(e) => setRoomId(e.target.value)}
+                placeholder="Enter meeting ID or link"
+                disabled={!isConnected || isJoining}
+                onKeyPress={(e) => e.key === 'Enter' && joinRoom()}
+                className="meeting-input"
+              />
               <button 
-                onClick={toggleMic}
-                className={`control-btn ${!isMicEnabled ? 'disabled' : ''}`}
-                title={isMicEnabled ? 'Mute' : 'Unmute'}
+                onClick={joinRoom}
+                disabled={!isConnected || isJoining || !roomId.trim()}
+                className={`join-btn ${isJoining ? 'loading' : ''}`}
               >
-                {isMicEnabled ? '🎤' : '🔇'}
-              </button>
-              <button 
-                onClick={toggleVideo}
-                className={`control-btn ${!isVideoEnabled ? 'disabled' : ''}`}
-                title={isVideoEnabled ? 'Turn off camera' : 'Turn on camera'}
-              >
-                {isVideoEnabled ? '📹' : '📷'}
+                {isJoining ? 'Joining...' : 'Join'}
               </button>
             </div>
           </div>
         </div>
-      </div>
-      
-      {/* Join Meeting Section */}
-      <div className="join-meeting-section">
-        <div className="join-container">
-          <h3>Join a Meeting</h3>
-          <div className="join-input-group">
-            <input
-              value={roomId}
-              onChange={(e) => setRoomId(e.target.value)}
-              placeholder="Enter meeting ID or link"
-              disabled={!isConnected || isJoining}
-              onKeyPress={(e) => e.key === 'Enter' && joinRoom()}
-              className="meeting-input"
-            />
-            <button 
-              onClick={joinRoom}
-              disabled={!isConnected || isJoining || !roomId.trim()}
-              className={`join-btn ${isJoining ? 'loading' : ''}`}
-            >
-              {isJoining ? 'Joining...' : 'Join'}
-            </button>
-          </div>
-        </div>
-      </div>
+      )}
       
 
       

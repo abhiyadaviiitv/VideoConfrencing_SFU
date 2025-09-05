@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import * as mediasoupClient from 'mediasoup-client';
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import ChatBox from '../components/ChatBox';
 import HandRaise from '../components/HandRaise';
@@ -103,6 +103,8 @@ const Room = () => {
   const [roomJoinTime, setRoomJoinTime] = useState(null)
   const [remotePeerStatus, setRemotePeerStatus] = useState(new Map()) // Track remote peer mute/camera status
   const [currentUserInfo, setCurrentUserInfo] = useState(null) // Store current user info
+  const [participantProfiles, setParticipantProfiles] = useState(new Map()); // Store participant profiles
+  const [isRecording, setIsRecording] = useState(false); // Recording state
   
   // Producer state to avoid cross-tab conflicts
   const [videoProducer, setVideoProducer] = useState(null);
@@ -120,13 +122,16 @@ const Room = () => {
       // Get user info from localStorage or session
       const userEmail = localStorage.getItem('userEmail') || sessionStorage.getItem('userEmail');
       const userName = localStorage.getItem('userName') || sessionStorage.getItem('userName');
+      const userAvatar = localStorage.getItem('userAvatar') || sessionStorage.getItem('userAvatar');
       
       if (userEmail && userName) {
-        setCurrentUserInfo({
+        const userInfo = {
           name: userName,
-          email: userEmail
-        });
-        return { name: userName, email: userEmail };
+          email: userEmail,
+          avatar: userAvatar || 'default-avatar.png'
+        };
+        setCurrentUserInfo(userInfo);
+        return userInfo;
       }
       
       // If not in storage, try to get from database via API
@@ -141,48 +146,15 @@ const Room = () => {
       }
       
       // Fallback to anonymous
-      return { name: 'Anonymous', email: '' };
+      return { name: 'Anonymous', email: '', avatar: 'default-avatar.png' };
     } catch (error) {
       console.error('Error getting user info:', error);
-      return { name: 'Anonymous', email: '' };
+      return { name: 'Anonymous', email: '', avatar: 'default-avatar.png' };
     }
   };
 
   // Function to update participants list
   // Function to update video tile labels when host status changes
-  const updateVideoTileLabels = () => {
-    const remoteVideos = remoteVideosRef.current;
-    if (!remoteVideos) return;
-    
-    // Update all video tile labels
-    const videoContainers = remoteVideos.querySelectorAll('.video-container');
-    videoContainers.forEach(container => {
-      const video = container.querySelector('video');
-      const label = container.querySelector('.peer-label');
-      if (video && label && video.dataset.peerId) {
-        const peerId = video.dataset.peerId;
-        const isHostPeer = peerId === hostId;
-        const isScreenShare = video.dataset.mediaType === 'screenShare';
-        
-        if (!isScreenShare) {
-          // Get participant name from participants list
-          const participant = participants.find(p => p.id === peerId);
-          const displayName = participant ? participant.name : `Client ${peerId.substring(0, 8)}`;
-          
-          // Update label text and styling for non-screen share videos
-          label.textContent = `${isHostPeer ? '👑 ' : ''}${displayName}`;
-          if (isHostPeer) {
-            label.style.background = 'rgba(16, 185, 129, 0.9)';
-            label.style.border = '1px solid rgba(16, 185, 129, 0.3)';
-          } else {
-            label.style.background = '';
-            label.style.border = '';
-          }
-        }
-      }
-    });
-  };
-
   const updateParticipants = () => {
     const participantList = [];
     
@@ -237,10 +209,96 @@ const Room = () => {
     setParticipants(participantList);
   };
 
-  // Function to get participant name from participants state
+  // Enhanced function to update video tile labels with profile data
+  const updateVideoTileLabels = () => {
+    const remoteVideos = remoteVideosRef.current;
+    if (!remoteVideos) return;
+    
+    console.log('Updating video tile labels with profiles:', Array.from(participantProfiles.entries()));
+    
+    // Update all video tile labels
+    const videoContainers = remoteVideos.querySelectorAll('.video-container');
+    videoContainers.forEach(container => {
+      const video = container.querySelector('video');
+      const label = container.querySelector('.peer-label');
+      if (video && label && video.dataset.peerId) {
+        const peerId = video.dataset.peerId;
+        const isHostPeer = peerId === hostId;
+        const isScreenShare = video.dataset.mediaType === 'screenShare';
+        
+        if (!isScreenShare) {
+          // Get participant name from profiles or participants
+          const participantName = getParticipantName(peerId);
+          const displayName = participantName || `User ${peerId.slice(-6)}`;
+          
+          console.log(`Updating label for ${peerId}: ${displayName} (isHost: ${isHostPeer})`);
+          
+          // Update label text and styling for non-screen share videos
+          label.textContent = `${isHostPeer ? '👑 ' : ''}${displayName}`;
+          if (isHostPeer) {
+            label.style.background = 'rgba(16, 185, 129, 0.9)';
+            label.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+          } else {
+            label.style.background = '';
+            label.style.border = '';
+          }
+        }
+      }
+    });
+  };
+
+  // Function to get participant name from profiles
   const getParticipantName = (peerId) => {
+    if (!peerId) return null;
+    
+    // Check if it's the current user
+    if (peerId === socket?.id) {
+      return currentUserInfo?.name || 'You';
+    }
+    
+    // Check participant profiles first
+    const profile = participantProfiles.get(peerId);
+    if (profile?.name) {
+      console.log(`Found profile for ${peerId}:`, profile.name);
+      return profile.name;
+    }
+    
+    // Fallback to participants list
     const participant = participants.find(p => p.id === peerId);
-    return participant ? participant.name : null;
+    if (participant?.name) {
+      console.log(`Found participant name for ${peerId}:`, participant.name);
+      return participant.name;
+    }
+    
+    console.log(`No name found for ${peerId}, using fallback`);
+    return null;
+  };
+
+  // Function to get participant avatar
+  const getParticipantAvatar = (peerId) => {
+    if (!peerId) return 'default-avatar.png';
+    
+    // Check if it's the current user
+    if (peerId === socket?.id) {
+      return currentUserInfo?.avatar || 'default-avatar.png';
+    }
+    
+    // Check participant profiles
+    const profile = participantProfiles.get(peerId);
+    return profile?.avatar || 'default-avatar.png';
+  };
+
+  // Function to get participant initials
+  const getParticipantInitials = (peerId) => {
+    const name = getParticipantName(peerId);
+    if (!name) return '?';
+    
+    return name
+      .split(' ')
+      .map(word => word.charAt(0))
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
   };
 
   // Exact functions from index.js
@@ -314,12 +372,14 @@ const Room = () => {
       const isScreenShare = appData && appData.mediaType === 'screenShare';
       
       if (isScreenShare) {
-        label.textContent = `🖥️ Client ${peerId.substring(0, 8)} is presenting`;
+        const presenterName = getParticipantName(peerId) || `Client ${peerId.substring(0, 8)}`;
+        label.textContent = `🖥️ ${presenterName} is presenting`;
         label.style.background = 'rgba(52, 168, 83, 0.9)';
         label.style.border = '1px solid rgba(52, 168, 83, 0.3)';
         label.style.color = 'white';
       } else {
-        label.textContent = `${isHostPeer ? '👑 ' : ''}Client ${peerId.substring(0, 8)}`; // Add crown for host
+        const participantName = getParticipantName(peerId) || `Client ${peerId.substring(0, 8)}`;
+        label.textContent = `${isHostPeer ? '👑 ' : ''}${participantName}`; // Add crown for host
         if (isHostPeer) {
           label.style.background = 'rgba(16, 185, 129, 0.9)';
           label.style.border = '1px solid rgba(16, 185, 129, 0.3)';
@@ -352,10 +412,34 @@ const Room = () => {
       handRaiseIndicator.innerHTML = '✋';
       handRaiseIndicator.style.display = 'none';
       
+      // Add avatar container for when video is off
+      const avatarContainer = document.createElement('div');
+      avatarContainer.className = 'avatar-container';
+      avatarContainer.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.3); backdrop-filter: blur(10px); z-index: 1;';
+      
+      const avatar = document.createElement('img');
+      avatar.className = 'participant-avatar';
+      avatar.style.cssText = 'width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255, 255, 255, 0.3);';
+      avatar.src = getParticipantAvatar(peerId);
+      avatar.alt = getParticipantName(peerId) || 'Participant';
+      
+      // Add fallback for when avatar fails to load
+      avatar.onerror = () => {
+        avatar.style.display = 'none';
+        const initialsDiv = document.createElement('div');
+        initialsDiv.className = 'avatar-initials';
+        initialsDiv.style.cssText = 'width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: bold; border: 3px solid rgba(255, 255, 255, 0.3);';
+        initialsDiv.textContent = getParticipantInitials(peerId);
+        avatarContainer.appendChild(initialsDiv);
+      };
+      
+      avatarContainer.appendChild(avatar);
+      
       overlay.appendChild(label);
       overlay.appendChild(statusContainer);
       overlay.appendChild(handRaiseIndicator);
       videoContainer.appendChild(el);
+      videoContainer.appendChild(avatarContainer);
       videoContainer.appendChild(overlay);
       
       // Store reference to update hand raise indicator
@@ -1229,6 +1313,32 @@ const Room = () => {
         // Note: User is already auto-joined to chat on server side during joinRoom
         // No need to emit join-chat again to avoid duplicate join messages
         
+        // Register profile with server
+        if (userInfo) {
+          // Get JWT token from localStorage
+          const token = localStorage.getItem('jwt') || sessionStorage.getItem('jwt');
+          if (token) {
+            socket.emit('register-profile', { 
+              token,
+              roomId
+            });
+          } else {
+            console.warn('No JWT token found for profile registration');
+          }
+        }
+        
+        // Get all participant profiles
+        socket.emit('get-participant-profiles', { roomId }, (profiles) => {
+          console.log('Received participant profiles:', profiles);
+          const profilesMap = new Map();
+          Object.entries(profiles).forEach(([socketId, profile]) => {
+            profilesMap.set(socketId, profile);
+          });
+          setParticipantProfiles(profilesMap);
+          updateVideoTileLabels();
+          updateParticipants();
+        });
+        
         // Broadcast initial status to other participants
         setTimeout(() => {
           if (socket) {
@@ -1438,6 +1548,42 @@ const Room = () => {
       }
     });
 
+    // Listen for profile updates
+    socket.on('profile-updated', ({ socketId, profile }) => {
+      console.log('Profile updated for:', socketId, profile);
+      setParticipantProfiles(prev => new Map(prev.set(socketId, profile)));
+      updateVideoTileLabels();
+      updateParticipants();
+    });
+
+    // Listen for all participant profiles
+    socket.on('participant-profiles-updated', (profiles) => {
+      console.log('All participant profiles updated:', profiles);
+      const profilesMap = new Map();
+      Object.entries(profiles).forEach(([socketId, profile]) => {
+        profilesMap.set(socketId, profile);
+      });
+      setParticipantProfiles(profilesMap);
+      updateVideoTileLabels();
+      updateParticipants();
+    });
+
+    // Listen for poll updates
+    socket.on('poll-created', (pollData) => {
+      console.log('New poll created:', pollData);
+      // This will be handled by PollBox component
+    });
+
+    socket.on('poll-voted', (voteData) => {
+      console.log('Poll vote received:', voteData);
+      // This will be handled by PollBox component
+    });
+
+    socket.on('poll-closed', (pollData) => {
+      console.log('Poll closed:', pollData);
+      // This will be handled by PollBox component
+    });
+
     socket.on('error', (error) => {
       console.error('Socket error:', error);
     });
@@ -1480,22 +1626,7 @@ const Room = () => {
       setRaisedHands([]);
     });
 
-    // Poll event listeners - these should always be active, not just when poll box is open
-    socket.on('poll-created', (pollData) => {
-      console.log('Poll created event received in Room:', pollData);
-      // The PollBox component will handle the actual poll data when it's opened
-      // But we can show a notification or update some global state here if needed
-    });
-
-    socket.on('poll-vote-update', (voteData) => {
-      console.log('Poll vote update received in Room:', voteData);
-      // The PollBox component will handle this when it's opened
-    });
-
-    socket.on('poll-closed', (pollData) => {
-      console.log('Poll closed event received in Room:', pollData);
-      // The PollBox component will handle this when it's opened
-    });
+    // Poll event listeners are handled by PollBox component to avoid conflicts
 
     socket.on('user-voted', (voteData) => {
       console.log('User voted event received in Room:', voteData);
@@ -1584,6 +1715,11 @@ const Room = () => {
       socket.off('host-changed');
       socket.off('participant-joined');
       socket.off('participant-removed');
+      socket.off('profile-updated');
+      socket.off('participant-profiles-updated');
+      socket.off('poll-created');
+      socket.off('poll-voted');
+      socket.off('poll-closed');
     };
   }, [urlRoomId]); // Only re-run when urlRoomId changes
 
@@ -1594,12 +1730,38 @@ const Room = () => {
       if (videoContainer) {
         const muteIndicator = videoContainer.querySelector('.mute-indicator');
         const cameraIndicator = videoContainer.querySelector('.camera-indicator');
+        const avatarContainer = videoContainer.querySelector('.avatar-container');
+        const video = videoContainer.querySelector('video');
         
         if (muteIndicator) {
           muteIndicator.style.display = isMuted ? 'block' : 'none';
         }
         if (cameraIndicator) {
           cameraIndicator.style.display = isCameraOff ? 'block' : 'none';
+        }
+        
+        // Show/hide avatar when camera is off
+        if (avatarContainer && video) {
+          if (isCameraOff) {
+            // Camera is off - show avatar, hide video
+            avatarContainer.style.display = 'flex';
+            video.style.display = 'none';
+            // Add blur effect to video when camera is off
+            video.style.filter = 'blur(10px)';
+          } else {
+            // Camera is on - check if video has actual content
+            const hasVideo = video.videoWidth > 0 && video.videoHeight > 0 && !video.paused;
+            if (hasVideo) {
+              avatarContainer.style.display = 'none';
+              video.style.display = 'block';
+              video.style.filter = 'none'; // Remove blur
+            } else {
+              // Video exists but no content - show avatar
+              avatarContainer.style.display = 'flex';
+              video.style.display = 'none';
+              video.style.filter = 'blur(10px)';
+            }
+          }
         }
       }
     }
@@ -1786,6 +1948,17 @@ const Room = () => {
           📊
         </button>
         
+        <button 
+          onClick={() => {
+            alert('Recording feature will be added shortly!');
+            setIsRecording(!isRecording);
+          }}
+          className={`control-btn ${isRecording ? 'active' : ''}`}
+          title={isRecording ? 'Stop recording' : 'Start recording'}
+        >
+          {isRecording ? '⏹️' : '⏺️'}
+        </button>
+        
         <HandRaise
             roomId={roomId}
             currentUserId={socket?.id || 'anonymous'}
@@ -1819,6 +1992,7 @@ const Room = () => {
           isHost={isHost}
           hostId={hostId}
           participants={participants}
+          participantProfiles={participantProfiles}
           onRemoveParticipant={handleRemoveParticipant}
           onMuteParticipant={handleMuteParticipant}
         />
@@ -1830,6 +2004,7 @@ const Room = () => {
           currentUserId={socket?.id || 'anonymous'}
           isHost={isHost}
           socket={socket}
+          currentUserInfo={currentUserInfo}
         />
     </div>
   );

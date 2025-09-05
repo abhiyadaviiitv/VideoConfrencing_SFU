@@ -1,6 +1,11 @@
 import { Link } from 'react-router-dom'
+import ProfileDropdown from '../components/ProfileDropdown'
+import { useAuth } from '../contexts/AuthContext'
+import './Home.css'
 
 export default function Home() {
+  const { user, isAuthenticated, loading } = useAuth()
+
   return (
     <div className="min-h-screen bg-background" style={{ background: '#f8f9fa', color: '#111' }}>
       <header style={{ borderBottom: '1px solid #e5e7eb', background: '#ffffffcc', backdropFilter: 'blur(6px)' }}>
@@ -20,8 +25,16 @@ export default function Home() {
               <a href="#pricing" style={{ color: '#6b7280', textDecoration: 'none' }}>Pricing</a>
             </nav>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Link to="/auth" style={{ padding: '8px 12px', borderRadius: 8, color: '#111', textDecoration: 'none' }}>Sign In</Link>
-              <Link to="/auth" style={{ background: '#1a73e8', color: 'white', padding: '10px 14px', borderRadius: 8, textDecoration: 'none' }}>Get Started</Link>
+              {loading ? (
+                <div style={{ padding: '8px 12px' }}>Loading...</div>
+              ) : isAuthenticated ? (
+                <ProfileDropdown />
+              ) : (
+                <>
+                  <Link to="/auth" style={{ padding: '8px 12px', borderRadius: 8, color: '#111', textDecoration: 'none' }}>Sign In</Link>
+                  <Link to="/auth" style={{ background: '#1a73e8', color: 'white', padding: '10px 14px', borderRadius: 8, textDecoration: 'none' }}>Get Started</Link>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -29,7 +42,7 @@ export default function Home() {
 
       <section style={{ padding: '80px 0' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48, alignItems: 'center', '@media (max-width: 768px)': { gridTemplateColumns: '1fr' } }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48, alignItems: 'center' }} className="hero-grid">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
               <div>
                 <h1 style={{ fontSize: 48, lineHeight: 1.1, marginBottom: 12, fontWeight: 800 }}>
@@ -42,12 +55,25 @@ export default function Home() {
               </div>
 
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <Link to="/lobby" style={{ background: '#10b981', color: 'white', padding: '14px 24px', borderRadius: 10, textDecoration: 'none', fontWeight: 600 }}>
-                  Start New Meeting
-                </Link>
-                <Link to="/schedule" style={{ padding: '14px 24px', borderRadius: 10, textDecoration: 'none', border: '1px solid #e5e7eb', background: 'transparent' }}>
-                  Schedule Meeting
-                </Link>
+                {isAuthenticated ? (
+                  <>
+                    <Link to="/lobby" style={{ background: '#10b981', color: 'white', padding: '14px 24px', borderRadius: 10, textDecoration: 'none', fontWeight: 600 }}>
+                      Start New Meeting
+                    </Link>
+                    <Link to="/schedule" style={{ padding: '14px 24px', borderRadius: 10, textDecoration: 'none', border: '1px solid #e5e7eb', background: 'transparent' }}>
+                      Schedule Meeting
+                    </Link>
+                  </>
+                ) : (
+                                      <>
+                      <Link to="/auth?mode=signup" style={{ background: '#10b981', color: 'white', padding: '14px 24px', borderRadius: 10, textDecoration: 'none', fontWeight: 600 }}>
+                        Sign Up
+                      </Link>
+                      <Link to="/auth" style={{ padding: '14px 24px', borderRadius: 10, textDecoration: 'none', border: '1px solid #e5e7eb', background: 'transparent' }}>
+                        Sign In
+                      </Link>
+                    </>
+                )}
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 24, color: '#6b7280', fontSize: 14 }}>
@@ -185,20 +211,37 @@ export default function Home() {
         </div>
       </section>
 
-      <section style={{ padding: '80px 0', background: 'white' }}>
-        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px', textAlign: 'center' }}>
-          <h2 style={{ fontSize: 32, fontWeight: 800, marginBottom: 16 }}>Ready to start your first meeting?</h2>
-          <p style={{ fontSize: 18, color: '#6b7280', marginBottom: 32 }}>Join millions of users who trust Connective for their video conferencing needs</p>
-          <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <Link to="/lobby" style={{ background: '#10b981', color: 'white', padding: '16px 32px', borderRadius: 10, textDecoration: 'none', fontWeight: 600 }}>
-              Start Free Meeting
-            </Link>
-            <Link to="/auth" style={{ padding: '16px 32px', borderRadius: 10, textDecoration: 'none', border: '1px solid #e5e7eb', background: 'transparent' }}>
-              Sign Up Free
-            </Link>
+      {!isAuthenticated ? (
+        <section style={{ padding: '80px 0', background: 'white' }}>
+          <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px', textAlign: 'center' }}>
+            <h2 style={{ fontSize: 32, fontWeight: 800, marginBottom: 16 }}>Ready to start your first meeting?</h2>
+            <p style={{ fontSize: 18, color: '#6b7280', marginBottom: 32 }}>Join millions of users who trust Connective for their video conferencing needs</p>
+            <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <Link to="/auth?mode=signup" style={{ background: '#10b981', color: 'white', padding: '16px 32px', borderRadius: 10, textDecoration: 'none', fontWeight: 600 }}>
+                Sign Up Free
+              </Link>
+              <Link to="/auth" style={{ padding: '16px 32px', borderRadius: 10, textDecoration: 'none', border: '1px solid #e5e7eb', background: 'transparent' }}>
+                Sign In
+              </Link>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      ) : (
+        <section style={{ padding: '80px 0', background: 'white' }}>
+          <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px', textAlign: 'center' }}>
+            <h2 style={{ fontSize: 32, fontWeight: 800, marginBottom: 16 }}>Welcome back, {user?.name}!</h2>
+            <p style={{ fontSize: 18, color: '#6b7280', marginBottom: 32 }}>Ready to connect with your team?</p>
+            <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <Link to="/lobby" style={{ background: '#10b981', color: 'white', padding: '16px 32px', borderRadius: 10, textDecoration: 'none', fontWeight: 600 }}>
+                Start New Meeting
+              </Link>
+              <Link to="/schedule" style={{ padding: '16px 32px', borderRadius: 10, textDecoration: 'none', border: '1px solid #e5e7eb', background: 'transparent' }}>
+                Schedule Meeting
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
 
       <footer style={{ background: '#1f2937', color: 'white', padding: '48px 0' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px' }}>
@@ -253,5 +296,3 @@ export default function Home() {
     </div>
   )
 }
-
-

@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars */
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { io } from 'socket.io-client'
+import socket from '../lib/socket'
 
 export default function MeetingNotifications() {
   const [upcomingMeetings, setUpcomingMeetings] = useState([])
@@ -81,10 +81,8 @@ export default function MeetingNotifications() {
   
   const handleStartMeeting = async (meetingId) => {
     try {
-      // Connect to the server to create a room
-      const socket = io('/mediasoup');
-      
-      socket.on('connect', () => {
+      // Use the centralized socket connection
+      if (socket.connected) {
         // Create a new room on the server
         socket.emit('createRoom', (response) => {
           if (response.roomId) {
@@ -95,9 +93,21 @@ export default function MeetingNotifications() {
             console.error('Failed to create room:', response.error);
             alert('Failed to start meeting. Please try again.');
           }
-          socket.disconnect();
         });
-      });
+      } else {
+        // If socket is not connected, wait for connection
+        socket.on('connect', () => {
+          socket.emit('createRoom', (response) => {
+            if (response.roomId) {
+              navigate(`/room/${response.roomId}`);
+              setCurrentNotification(null);
+            } else {
+              console.error('Failed to create room:', response.error);
+              alert('Failed to start meeting. Please try again.');
+            }
+          });
+        });
+      }
       
       socket.on('connect_error', (error) => {
         console.error('Failed to connect to server:', error);

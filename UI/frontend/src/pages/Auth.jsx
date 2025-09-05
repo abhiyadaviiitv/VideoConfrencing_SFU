@@ -1,14 +1,44 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function Auth() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const { login, isAuthenticated } = useAuth()
   const [isSignUp, setIsSignUp] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [formData, setFormData] = useState({ name: '', email: '', password: '' })
+
+  // Check if user came from sign up button or has a redirect
+  useEffect(() => {
+    const isFromSignUp = searchParams.get('mode') === 'signup'
+    const redirectTo = searchParams.get('redirect')
+    
+    if (isFromSignUp) {
+      setIsSignUp(true)
+    }
+    
+    // Store redirect path for after authentication
+    if (redirectTo) {
+      localStorage.setItem('authRedirect', redirectTo)
+    }
+  }, [searchParams])
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      const redirectPath = localStorage.getItem('authRedirect')
+      if (redirectPath) {
+        localStorage.removeItem('authRedirect')
+        navigate(redirectPath)
+      } else {
+        navigate('/lobby')
+      }
+    }
+  }, [isAuthenticated, navigate])
 
   const handleInputChange = (e) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }))
@@ -23,10 +53,37 @@ export default function Auth() {
   useEffect(() => {
     const token = searchParams.get('token')
     if (token) {
-      localStorage.setItem('token', token)
-      navigate('/lobby')
+      // For OAuth, we need to fetch user info from the token
+      const fetchUserInfo = async () => {
+        try {
+          const response = await fetch(`${apiBase}/auth/me`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          })
+          
+          if (response.ok) {
+            const data = await response.json()
+            // Use the login function from AuthContext
+            login(token, data.user)
+            
+            // Check if there's a redirect path stored
+            const redirectPath = localStorage.getItem('authRedirect')
+            if (redirectPath) {
+              localStorage.removeItem('authRedirect')
+              navigate(redirectPath)
+            } else {
+              navigate('/lobby')
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching user info:', error)
+        }
+      }
+      
+      fetchUserInfo()
     }
-  }, [searchParams, navigate])
+  }, [searchParams, navigate, apiBase, login])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -47,9 +104,17 @@ export default function Auth() {
         throw new Error(data.error || 'Authentication failed')
       }
       
-      // Store token
-      localStorage.setItem('token', data.token)
-      navigate('/lobby')
+      // Use the login function from AuthContext
+      login(data.token, data.user)
+      
+      // Check if there's a redirect path stored
+      const redirectPath = localStorage.getItem('authRedirect')
+      if (redirectPath) {
+        localStorage.removeItem('authRedirect')
+        navigate(redirectPath)
+      } else {
+        navigate('/lobby')
+      }
     } catch (err) {
       console.error(err)
       setError(err.message || 'Authentication failed')
@@ -163,5 +228,3 @@ export default function Auth() {
     </div>
   )
 }
-
-
