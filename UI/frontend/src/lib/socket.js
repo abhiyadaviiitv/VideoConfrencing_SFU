@@ -1,6 +1,6 @@
 import { io } from 'socket.io-client'
 
-const API_BASE = 'http://localhost:4000'
+const API_BASE = 'https://192.168.2.105.nip.io:4000'
 
 // Dynamic token retrieval function
 const getToken = () => localStorage.getItem('token')
@@ -9,20 +9,20 @@ const getToken = () => localStorage.getItem('token')
 const socket = io(`${API_BASE}/mediasoup`, {
   withCredentials: true,
   transports: ['websocket', 'polling'], // Add polling as fallback
-  auth: { 
+  auth: {
     get token() { return getToken() } // Dynamic token retrieval
   },
   extraHeaders: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
   reconnection: true,
   reconnectionAttempts: 5,
   reconnectionDelay: 1000,
-  autoConnect: false // Don't connect automatically
+  autoConnect: false // Connect manually after auth
 })
 
 // Enhanced connection error handling
 socket.on('connect_error', (error) => {
   console.error('Socket connection error:', error.message)
-  
+
   // Handle specific authentication errors
   const authErrors = [
     'Authentication token required',
@@ -31,19 +31,20 @@ socket.on('connect_error', (error) => {
     'Invalid token',
     'Invalid token structure'
   ]
-  
+
   if (authErrors.includes(error.message)) {
     console.log('Authentication failed, clearing token and redirecting to login')
     localStorage.removeItem('token')
-    
+
     // Show user-friendly message
     if (error.message === 'Token expired') {
       alert('Your session has expired. Please log in again.')
     } else if (error.message === 'Invalid token') {
       alert('Invalid authentication. Please log in again.')
     }
-    
-    window.location.href = '/auth'
+
+    // window.location.href = '/auth'
+    console.error('Socket Authentication failed. Please check console logs and try logging out/in.')
   } else if (error.message === 'Server configuration error') {
     console.error('Server configuration issue detected')
     alert('Server configuration error. Please contact support.')
@@ -74,7 +75,7 @@ export const reconnectSocket = (newToken) => {
   if (socket.connected) {
     socket.disconnect()
   }
-  
+
   // Update socket connection with new token
   socket.auth = { token: newToken }
   socket.io.uri = `${API_BASE}/mediasoup`

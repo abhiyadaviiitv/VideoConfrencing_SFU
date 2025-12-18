@@ -47,13 +47,13 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
         if (response.polls && Array.isArray(response.polls)) {
           console.log('Received existing polls:', response.polls)
           setPolls(response.polls)
-          
+
           // Set active poll if there's one
           const activePollData = response.polls.find(poll => poll.isActive)
           if (activePollData) {
             setActivePoll(activePollData)
           }
-          
+
           // Set user votes if available
           if (response.userVotes) {
             const votesMap = new Map()
@@ -73,7 +73,7 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
       // Listen for poll events
       const handlePollCreated = (pollData) => {
         console.log('Poll created:', pollData)
-        
+
         // Prevent duplicate polls by checking if poll already exists
         setPolls(prev => {
           const existingPoll = prev.find(poll => poll.id === pollData.id)
@@ -83,11 +83,11 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
           }
           return [...prev, pollData]
         })
-        
+
         if (pollData.isActive) {
           setActivePoll(pollData)
         }
-        
+
         // Show notification if poll was created by someone else
         if (pollData.createdBy !== currentUserId) {
           setNotification({
@@ -95,7 +95,7 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
             message: `New poll: "${pollData.question}"`,
             timestamp: Date.now()
           })
-          
+
           // Auto-hide notification after 5 seconds
           setTimeout(() => {
             setNotification(null)
@@ -104,33 +104,33 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
       }
 
       const handlePollVote = (voteData) => {
-        setPolls(prev => prev.map(poll => 
-          poll.id === voteData.pollId 
+        setPolls(prev => prev.map(poll =>
+          poll.id === voteData.pollId
             ? { ...poll, votes: voteData.votes, totalVotes: voteData.totalVotes }
             : poll
         ))
-        
+
         if (activePoll && activePoll.id === voteData.pollId) {
-          setActivePoll(prev => ({ 
-            ...prev, 
-            votes: voteData.votes, 
-            totalVotes: voteData.totalVotes 
+          setActivePoll(prev => ({
+            ...prev,
+            votes: voteData.votes,
+            totalVotes: voteData.totalVotes
           }))
         }
       }
 
       const handlePollClosed = (pollData) => {
-        setPolls(prev => prev.map(poll => 
-          poll.id === pollData.pollId 
+        setPolls(prev => prev.map(poll =>
+          poll.id === pollData.pollId
             ? { ...poll, isActive: false, closedAt: pollData.closedAt }
             : poll
         ))
-        
+
         if (activePoll && activePoll.id === pollData.pollId) {
-          setActivePoll(prev => ({ 
-            ...prev, 
-            isActive: false, 
-            closedAt: pollData.closedAt 
+          setActivePoll(prev => ({
+            ...prev,
+            isActive: false,
+            closedAt: pollData.closedAt
           }))
         }
       }
@@ -170,11 +170,11 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
     let timer
     if (activePoll && activePoll.duration && activePoll.isActive) {
       const endTime = new Date(activePoll.createdAt).getTime() + (activePoll.duration * 60 * 1000)
-      
+
       timer = setInterval(() => {
         const now = Date.now()
         const remaining = Math.max(0, endTime - now)
-        
+
         if (remaining > 0) {
           setTimeRemaining(remaining)
         } else {
@@ -244,7 +244,7 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
     // Optimistically set as active poll to reflect immediately in UI
     setActivePoll(pollData)
     socket.emit('create-poll', pollData)
-    
+
     // Reset form
     setNewPollQuestion('')
     setNewPollOptions(['', ''])
@@ -256,17 +256,22 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
   }
 
   const vote = (pollId, optionIndex) => {
-    const currentVote = userVotes.get(pollId)
-    
+    console.log('Vote button clicked:', { pollId, optionIndex, roomId, socket: !!socket });
+    const currentVote = userVotes.get(pollId);
+    console.log('Current user vote:', currentVote);
+
     if (currentVote === optionIndex) {
       // User clicked on their current vote - remove the vote (toggle off)
-      socket.emit('remove-vote-poll', { pollId, roomId })
+      console.log('Removing vote');
+      socket.emit('remove-vote-poll', { pollId, roomId });
     } else if (userVotes.has(pollId)) {
       // User has voted for a different option - change their vote
-      socket.emit('change-vote-poll', { pollId, optionIndex, roomId })
+      console.log('Changing vote from', currentVote, 'to', optionIndex);
+      socket.emit('change-vote-poll', { pollId, optionIndex, roomId });
     } else {
       // User hasn't voted yet - cast new vote
-      socket.emit('vote-poll', { pollId, optionIndex, roomId })
+      console.log('Casting new vote');
+      socket.emit('vote-poll', { pollId, optionIndex, roomId });
     }
   }
 
@@ -310,7 +315,7 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
           <div className="notification-content">
             <span className="notification-icon">📊</span>
             <span className="notification-message">{notification.message}</span>
-            <button 
+            <button
               className="notification-close"
               onClick={() => setNotification(null)}
             >
@@ -319,7 +324,7 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
           </div>
         </div>
       )}
-      
+
       <div className="poll-container">
         <div className="poll-header">
           <h3>📊 Polls</h3>
@@ -331,7 +336,7 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
           {isHost && (
             <div className="create-poll-section">
               {!isCreatingPoll ? (
-                <button 
+                <button
                   onClick={() => setIsCreatingPoll(true)}
                   className="create-poll-btn"
                 >
@@ -340,7 +345,7 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
               ) : (
                 <div className="poll-form">
                   <h4>Create New Poll</h4>
-                  
+
                   {/* Poll Templates */}
                   <div className="poll-templates">
                     <label>Quick Templates:</label>
@@ -349,9 +354,8 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
                         <button
                           key={template.name}
                           onClick={() => applyTemplate(template)}
-                          className={`template-btn ${
-                            selectedTemplate === template.name ? 'active' : ''
-                          }`}
+                          className={`template-btn ${selectedTemplate === template.name ? 'active' : ''
+                            }`}
                         >
                           {template.name}
                         </button>
@@ -366,7 +370,7 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
                     onChange={(e) => setNewPollQuestion(e.target.value)}
                     className="poll-question-input"
                   />
-                  
+
                   <div className="poll-options">
                     <label>Options:</label>
                     {newPollOptions.map((option, index) => (
@@ -379,7 +383,7 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
                           className="option-input"
                         />
                         {newPollOptions.length > 2 && (
-                          <button 
+                          <button
                             onClick={() => removeOption(index)}
                             className="remove-option-btn"
                           >
@@ -388,7 +392,7 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
                         )}
                       </div>
                     ))}
-                    
+
                     {newPollOptions.length < 6 && (
                       <button onClick={addOption} className="add-option-btn">
                         ➕ Add Option
@@ -399,11 +403,11 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
                   {/* Poll Settings */}
                   <div className="poll-settings">
                     <h5>Poll Settings</h5>
-                    
+
                     <div className="setting-group">
                       <label>Duration (minutes):</label>
-                      <select 
-                        value={pollDuration} 
+                      <select
+                        value={pollDuration}
                         onChange={(e) => setPollDuration(Number(e.target.value))}
                         className="duration-select"
                       >
@@ -441,12 +445,12 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
                       </label>
                     </div>
                   </div>
-                  
+
                   <div className="poll-form-actions">
                     <button onClick={createPoll} className="create-btn">
                       Create Poll
                     </button>
-                    <button 
+                    <button
                       onClick={() => {
                         setIsCreatingPoll(false)
                         setNewPollQuestion('')
@@ -477,8 +481,8 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
               <div className="poll-item">
                 <div className="poll-question">{activePoll.question}</div>
                 <div className="poll-meta">
-                  Created by {activePoll.isAnonymous ? 'Anonymous' : 
-                    (activePoll.createdBy === currentUserId ? 'You' : `User ${activePoll.createdBy.slice(-6)}`)} • 
+                  Created by {activePoll.isAnonymous ? 'Anonymous' :
+                    (activePoll.createdBy === currentUserId ? 'You' : `User ${activePoll.createdBy.slice(-6)}`)} •
                   {formatTime(activePoll.createdAt)}
                   {activePoll.duration > 0 && (
                     <span className="duration-info"> • {activePoll.duration} min duration</span>
@@ -487,19 +491,18 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
                     <span className="multiple-info"> • Multiple choices allowed</span>
                   )}
                 </div>
-                
+
                 <div className="poll-options-list">
                   {activePoll.options.map((option, index) => {
                     const hasVoted = userVotes.has(activePoll.id)
                     const isUserVote = userVotes.get(activePoll.id) === index
                     const percentage = getVotePercentage(activePoll.votes, index, activePoll.totalVotes)
-                    
+
                     return (
-                      <div 
-                        key={index} 
-                        className={`poll-option-box ${
-                          isUserVote ? 'user-voted' : ''
-                        } ${hasVoted && !isUserVote ? 'other-voted' : ''}`}
+                      <div
+                        key={index}
+                        className={`poll-option-box ${isUserVote ? 'user-voted' : ''
+                          } ${hasVoted && !isUserVote ? 'other-voted' : ''}`}
                         onClick={() => vote(activePoll.id, index)}
                       >
                         <div className="option-content">
@@ -508,11 +511,11 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
                             <span className="vote-indicator">✓ Your vote</span>
                           )}
                         </div>
-                        
+
                         {hasVoted && (
                           <div className="vote-bar">
-                            <div 
-                              className="vote-fill" 
+                            <div
+                              className="vote-fill"
                               style={{ width: `${percentage}%` }}
                             ></div>
                             <span className="vote-count">
@@ -520,7 +523,7 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
                             </span>
                           </div>
                         )}
-                        
+
                         {!hasVoted && (
                           <div className="vote-hint">Click to vote</div>
                         )}
@@ -528,13 +531,13 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
                     )
                   })}
                 </div>
-                
+
                 <div className="poll-stats">
                   Total votes: {activePoll.totalVotes}
                 </div>
-                
+
                 {isHost && (
-                  <button 
+                  <button
                     onClick={() => closePoll(activePoll.id)}
                     className="close-poll-btn"
                   >
@@ -561,15 +564,15 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
                     <div key={poll.id} className="poll-item closed">
                       <div className="poll-question">{poll.question}</div>
                       <div className="poll-meta">
-                        Created by {poll.createdBy === currentUserId ? 'You' : `User ${poll.createdBy.slice(-6)}`} • 
-                        {formatTime(poll.createdAt)} • 
+                        Created by {poll.createdBy === currentUserId ? 'You' : `User ${poll.createdBy.slice(-6)}`} •
+                        {formatTime(poll.createdAt)} •
                         Closed {formatTime(poll.closedAt)}
                       </div>
-                      
+
                       <div className="poll-results">
                         {poll.options.map((option, index) => {
                           const percentage = getVotePercentage(poll.votes, index, poll.totalVotes)
-                          
+
                           return (
                             <div key={index} className="result-option">
                               <div className="option-header">
@@ -579,8 +582,8 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
                                 </span>
                               </div>
                               <div className="result-bar">
-                                <div 
-                                  className="result-fill" 
+                                <div
+                                  className="result-fill"
                                   style={{ width: `${percentage}%` }}
                                 ></div>
                               </div>
@@ -588,7 +591,7 @@ export default function PollBox({ isOpen, onClose, roomId, currentUserId, socket
                           )
                         })}
                       </div>
-                      
+
                       <div className="poll-stats">
                         Total votes: {poll.totalVotes}
                       </div>

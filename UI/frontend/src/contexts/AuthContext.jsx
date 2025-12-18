@@ -13,16 +13,28 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [token, setToken] = useState(localStorage.getItem('token'))
+  // Check for token in URL (from OAuth redirect)
+  const [token, setToken] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    const urlToken = params.get('token')
+    if (urlToken) {
+      localStorage.setItem('token', urlToken)
+      localStorage.setItem('jwt', urlToken) // Store under both keys for compatibility
+      // Clean URL
+      window.history.replaceState({}, document.title, window.location.pathname)
+      return urlToken
+    }
+    return localStorage.getItem('token') || localStorage.getItem('jwt')
+  })
 
-  const apiBase = 'http://localhost:4000'
+  const apiBase = 'https://192.168.2.105:4000'
 
   // Check if we have cached user data to reduce loading time
   const getCachedUser = () => {
     try {
       const cachedUser = localStorage.getItem('cachedUser')
       const cacheTimestamp = localStorage.getItem('userCacheTimestamp')
-      
+
       if (cachedUser && cacheTimestamp) {
         const cacheAge = Date.now() - parseInt(cacheTimestamp)
         // Use cache if less than 5 minutes old
@@ -180,9 +192,11 @@ export const AuthProvider = ({ children }) => {
   // Login function
   const login = (newToken, userData) => {
     localStorage.setItem('token', newToken)
+    localStorage.setItem('jwt', newToken) // Store under both keys for compatibility
     setToken(newToken)
     setUser(userData)
-    
+    setCachedUser(userData)
+
     // Reconnect socket with new token
     if (window.socketReconnect) {
       window.socketReconnect(newToken)
@@ -192,6 +206,7 @@ export const AuthProvider = ({ children }) => {
   // Logout function
   const logout = () => {
     localStorage.removeItem('token')
+    localStorage.removeItem('jwt') // Remove both keys
     setToken(null)
     setUser(null)
     clearCachedUser()
@@ -199,6 +214,10 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     fetchUser()
+    // Explicitly connect socket when token changes/is ready
+    if (token && window.connectSocket) {
+      window.connectSocket(token)
+    }
   }, [token])
 
   const value = {

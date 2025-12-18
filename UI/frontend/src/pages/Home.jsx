@@ -65,14 +65,14 @@ export default function Home() {
                     </Link>
                   </>
                 ) : (
-                                      <>
-                      <Link to="/auth?mode=signup" style={{ background: '#10b981', color: 'white', padding: '14px 24px', borderRadius: 10, textDecoration: 'none', fontWeight: 600 }}>
-                        Sign Up
-                      </Link>
-                      <Link to="/auth" style={{ padding: '14px 24px', borderRadius: 10, textDecoration: 'none', border: '1px solid #e5e7eb', background: 'transparent' }}>
-                        Sign In
-                      </Link>
-                    </>
+                  <>
+                    <Link to="/auth?mode=signup" style={{ background: '#10b981', color: 'white', padding: '14px 24px', borderRadius: 10, textDecoration: 'none', fontWeight: 600 }}>
+                      Sign Up
+                    </Link>
+                    <Link to="/auth" style={{ padding: '14px 24px', borderRadius: 10, textDecoration: 'none', border: '1px solid #e5e7eb', background: 'transparent' }}>
+                      Sign In
+                    </Link>
+                  </>
                 )}
               </div>
 
@@ -133,7 +133,7 @@ export default function Home() {
               <h4>HD Video & Audio</h4>
               <p>Crystal-clear quality with adaptive bitrate</p>
             </div>
-            
+
             <div className="feature-card">
               <div className="feature-icon">💻</div>
               <h4>Screen Sharing</h4>
@@ -259,7 +259,7 @@ export default function Home() {
                 Connect with anyone, anywhere with our next-generation video conferencing platform.
               </p>
             </div>
-            
+
             <div>
               <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Product</h3>
               <ul style={{ listStyle: 'none', padding: 0 }}>
@@ -268,7 +268,7 @@ export default function Home() {
                 <li style={{ marginBottom: 8 }}><a href="#pricing" style={{ color: '#9ca3af', textDecoration: 'none' }}>Pricing</a></li>
               </ul>
             </div>
-            
+
             <div>
               <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Company</h3>
               <ul style={{ listStyle: 'none', padding: 0 }}>
@@ -277,7 +277,7 @@ export default function Home() {
                 <li style={{ marginBottom: 8 }}><a href="#" style={{ color: '#9ca3af', textDecoration: 'none' }}>Careers</a></li>
               </ul>
             </div>
-            
+
             <div>
               <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Support</h3>
               <ul style={{ listStyle: 'none', padding: 0 }}>
@@ -287,7 +287,7 @@ export default function Home() {
               </ul>
             </div>
           </div>
-          
+
           <div style={{ borderTop: '1px solid #374151', marginTop: 32, paddingTop: 32, textAlign: 'center', color: '#9ca3af' }}>
             <p>&copy; 2024 Connective. All rights reserved.</p>
           </div>

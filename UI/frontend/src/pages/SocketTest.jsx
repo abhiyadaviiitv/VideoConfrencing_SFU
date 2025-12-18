@@ -65,7 +65,7 @@ const SocketTest = () => {
   return (
     <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
       <h1>Socket Connection Test</h1>
-      
+
       <div style={{ marginBottom: '20px' }}>
         <h3>Connection Status: <span style={{ color: socket.connected ? 'green' : 'red' }}>{connectionStatus}</span></h3>
         {socketId && <p><strong>Socket ID:</strong> {socketId}</p>}
@@ -91,7 +91,7 @@ const SocketTest = () => {
       <div>
         <h3>Debug Info:</h3>
         <ul>
-          <li>Socket URL: http://localhost:4000/mediasoup</li>
+          <li>Socket URL: http://192.168.2.105:4000/mediasoup</li>
           <li>Transport: {socket.io.engine.transport.name}</li>
           <li>Connected: {socket.connected ? 'Yes' : 'No'}</li>
           <li>Token Present: {localStorage.getItem('token') ? 'Yes' : 'No'}</li>

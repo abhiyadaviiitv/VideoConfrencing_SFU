@@ -5,14 +5,9 @@ import { Pool } from 'pg'
 dotenv.config() // loads .env variables
 
 const pool = new Pool({
-  host: process.env.DB_HOST, 
-  port: process.env.DB_PORT, 
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER, 
-  password: process.env.DB_PASSWORD,
-  ssl: { 
-    rejectUnauthorized: false,
-    ca: process.env.DB_CA_CERT || undefined
+  connectionString: process.env.PG_SESSION_CONSTRING,
+  ssl: {
+    rejectUnauthorized: false
   }
 })
 
@@ -33,7 +28,7 @@ export class User {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `)
-      
+
       await client.query(`
         CREATE TABLE IF NOT EXISTS sessions (
           sid VARCHAR PRIMARY KEY NOT NULL COLLATE "default",
@@ -42,7 +37,7 @@ export class User {
         )
         WITH (OIDS=FALSE)
       `)
-      
+
       await client.query(`
         CREATE INDEX IF NOT EXISTS IDX_sessions_expire ON sessions (expire)
       `)
@@ -88,7 +83,7 @@ export class User {
     const client = await pool.connect()
     try {
       const { email, password, name, avatar_url, provider, provider_id } = userData
-      
+
       let password_hash = null
       if (password) {
         password_hash = await bcrypt.hash(password, 12)
@@ -100,7 +95,7 @@ export class User {
          RETURNING *`,
         [email, password_hash, name, avatar_url, provider, provider_id]
       )
-      
+
       return result.rows[0]
     } finally {
       client.release()
@@ -113,12 +108,12 @@ export class User {
       const fields = Object.keys(updates)
       const values = Object.values(updates)
       const setClause = fields.map((field, index) => `${field} = $${index + 2}`).join(', ')
-      
+
       const result = await client.query(
         `UPDATE users SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
         [id, ...values]
       )
-      
+
       return result.rows[0]
     } finally {
       client.release()
@@ -130,27 +125,27 @@ export class User {
     try {
       const allowedFields = ['name', 'avatar_url']
       const updates = {}
-      
+
       // Only allow specific fields to be updated
       for (const field of allowedFields) {
         if (profileData[field] !== undefined) {
           updates[field] = profileData[field]
         }
       }
-      
+
       if (Object.keys(updates).length === 0) {
         return await this.findById(id)
       }
-      
+
       const fields = Object.keys(updates)
       const values = Object.values(updates)
       const setClause = fields.map((field, index) => `${field} = $${index + 2}`).join(', ')
-      
+
       const result = await client.query(
         `UPDATE users SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
         [id, ...values]
       )
-      
+
       return result.rows[0]
     } finally {
       client.release()
@@ -158,6 +153,7 @@ export class User {
   }
 
   static async verifyPassword(password, hash) {
+    if (!hash) return false
     return bcrypt.compare(password, hash)
   }
 

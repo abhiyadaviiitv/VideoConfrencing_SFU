@@ -10,14 +10,14 @@ export default function ScheduleMeetingModal({ isOpen, onClose, onSchedule }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    
+
     if (!meetingTitle || !meetingDate || !meetingTime) {
       alert('Please fill in all required fields')
       return
     }
 
     setIsScheduling(true)
-    
+
     const scheduledMeeting = {
       title: meetingTitle,
       date: meetingDate,
@@ -33,16 +33,16 @@ export default function ScheduleMeetingModal({ isOpen, onClose, onSchedule }) {
       const existingMeetings = JSON.parse(localStorage.getItem('scheduledMeetings') || '[]')
       existingMeetings.push(scheduledMeeting)
       localStorage.setItem('scheduledMeetings', JSON.stringify(existingMeetings))
-      
+
       onSchedule(scheduledMeeting)
-      
+
       // Reset form
       setMeetingTitle('')
       setMeetingDate('')
       setMeetingTime('')
       setDuration('60')
       setDescription('')
-      
+
       alert(`Meeting "${meetingTitle}" scheduled successfully!\nMeeting ID: ${scheduledMeeting.meetingId}`)
       onClose()
     } catch (error) {
@@ -69,15 +69,15 @@ export default function ScheduleMeetingModal({ isOpen, onClose, onSchedule }) {
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>Schedule New Meeting</h2>
-          <button 
-            className="close-btn" 
+          <button
+            className="close-btn"
             onClick={handleClose}
             disabled={isScheduling}
           >
             ✕
           </button>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="schedule-form">
           <div className="form-group">
             <label htmlFor="meetingTitle">Meeting Title *</label>
@@ -91,7 +91,7 @@ export default function ScheduleMeetingModal({ isOpen, onClose, onSchedule }) {
               required
             />
           </div>
-          
+
           <div className="form-row">
             <div className="form-group">
               <label htmlFor="meetingDate">Date *</label>
@@ -105,7 +105,7 @@ export default function ScheduleMeetingModal({ isOpen, onClose, onSchedule }) {
                 required
               />
             </div>
-            
+
             <div className="form-group">
               <label htmlFor="meetingTime">Time *</label>
               <input
@@ -118,7 +118,7 @@ export default function ScheduleMeetingModal({ isOpen, onClose, onSchedule }) {
               />
             </div>
           </div>
-          
+
           <div className="form-group">
             <label htmlFor="duration">Duration (minutes)</label>
             <select
@@ -133,7 +133,7 @@ export default function ScheduleMeetingModal({ isOpen, onClose, onSchedule }) {
               <option value="120">2 hours</option>
             </select>
           </div>
-          
+
           <div className="form-group">
             <label htmlFor="description">Description (optional)</label>
             <textarea
@@ -145,18 +145,18 @@ export default function ScheduleMeetingModal({ isOpen, onClose, onSchedule }) {
               disabled={isScheduling}
             />
           </div>
-          
+
           <div className="form-actions">
-            <button 
-              type="button" 
+            <button
+              type="button"
               onClick={handleClose}
               className="cancel-btn"
               disabled={isScheduling}
             >
               Cancel
             </button>
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               className={`schedule-btn ${isScheduling ? 'loading' : ''}`}
               disabled={isScheduling}
             >

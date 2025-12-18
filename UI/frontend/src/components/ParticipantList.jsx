@@ -19,7 +19,7 @@ export default function ParticipantList({ isOpen, onClose, roomId, currentUserId
     if (diff < 1) return 'Just joined'
     if (diff === 1) return '1 minute ago'
     if (diff < 60) return `${diff} minutes ago`
-    
+
     const hours = Math.floor(diff / 60)
     if (hours === 1) return '1 hour ago'
     return `${hours} hours ago`
@@ -35,12 +35,16 @@ export default function ParticipantList({ isOpen, onClose, roomId, currentUserId
 
   const getParticipantName = (participant) => {
     const profile = participantProfiles.get(participant.id)
-    return profile ? profile.name : participant.name
+    let name = profile ? profile.name : participant.name
+    if (participant.isHost) {
+      name = `${name} (Host)`
+    }
+    return name
   }
 
   const getParticipantAvatar = (participant) => {
     const profile = participantProfiles.get(participant.id)
-    const url = profile ? profile.avatar_url : null
+    const url = profile ? (profile.avatar_url || profile.avatar) : null
     if (!url) return null
     if (url.startsWith('http')) return url
     const apiBase = import.meta?.env?.VITE_API_BASE_URL
@@ -68,15 +72,15 @@ export default function ParticipantList({ isOpen, onClose, roomId, currentUserId
             </div>
           ) : (
             participants.map((participant) => (
-              <div 
-                key={participant.id} 
+              <div
+                key={participant.id}
                 className={`participant-item ${participant.id === currentUserId ? 'current-user' : ''} ${participant.isHost ? 'host-participant' : ''}`}
               >
                 <div className="participant-avatar">
                   <div className="avatar-circle">
                     {getParticipantAvatar(participant) ? (
-                      <img 
-                        src={getParticipantAvatar(participant)} 
+                      <img
+                        src={getParticipantAvatar(participant)}
                         alt={getParticipantName(participant)}
                         style={{
                           width: '100%',
@@ -90,7 +94,7 @@ export default function ParticipantList({ isOpen, onClose, roomId, currentUserId
                         }}
                       />
                     ) : null}
-                    <div 
+                    <div
                       style={{
                         display: getParticipantAvatar(participant) ? 'none' : 'flex',
                         alignItems: 'center',
@@ -108,7 +112,7 @@ export default function ParticipantList({ isOpen, onClose, roomId, currentUserId
                     {participant.isCameraOff && <span className="indicator camera-off">📷</span>}
                   </div>
                 </div>
-                
+
                 <div className="participant-info">
                   <div className="participant-name">
                     {getParticipantName(participant)}
@@ -122,12 +126,12 @@ export default function ParticipantList({ isOpen, onClose, roomId, currentUserId
                   </div>
                   <div className="participant-id">ID: {participant.id.slice(-8)}</div>
                 </div>
-                
+
                 <div className="participant-actions">
                   {isHost && participant.id !== currentUserId && (
                     <>
 
-                      <button 
+                      <button
                         className="action-btn remove-btn"
                         title="Remove participant"
                         onClick={() => onRemoveParticipant && onRemoveParticipant(participant.id)}

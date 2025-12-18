@@ -3,14 +3,9 @@ import { Pool } from 'pg'
 dotenv.config()
 
 const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
+  connectionString: process.env.PG_SESSION_CONSTRING,
   ssl: {
-    rejectUnauthorized: false,
-    ca: process.env.DB_CA_CERT || undefined
+    rejectUnauthorized: false
   }
 })
 
@@ -88,14 +83,14 @@ export class Poll {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING *`,
         [
-          pollData.id, 
-          pollData.roomId, 
-          pollData.question, 
+          pollData.id,
+          pollData.roomId,
+          pollData.question,
           pollData.createdBy || null, // Allow null for anonymous users
-          pollData.isActive, 
-          0, 
-          pollData.duration || 0, 
-          pollData.isAnonymous || false, 
+          pollData.isActive,
+          0,
+          pollData.duration || 0,
+          pollData.isAnonymous || false,
           pollData.allowMultiple || false
         ]
       )
@@ -114,14 +109,14 @@ export class Poll {
       console.log('Poll options inserted successfully');
 
       await client.query('COMMIT')
-      
+
       // Return the created poll with options
       const createdPoll = pollResult.rows[0]
       const optionsResult = await client.query(
         'SELECT option_text, vote_count FROM poll_options WHERE poll_id = $1 ORDER BY option_index',
         [pollData.id]
       )
-      
+
       return {
         id: createdPoll.id,
         roomId: createdPoll.room_id,
@@ -152,9 +147,9 @@ export class Poll {
         'INSERT INTO polls (room_id, question, options, created_by, duration, is_anonymous, allow_multiple) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
         [roomId, question, JSON.stringify(options), createdBy, duration, isAnonymous, allowMultiple]
       )
-      
+
       const poll = result.rows[0]
-      
+
       // Initialize poll options in poll_options table
       for (let i = 0; i < options.length; i++) {
         await pool.query(
@@ -162,7 +157,7 @@ export class Poll {
           [poll.id, i, options[i]]
         )
       }
-      
+
       return poll
     } catch (error) {
       console.error('Error creating poll:', error)

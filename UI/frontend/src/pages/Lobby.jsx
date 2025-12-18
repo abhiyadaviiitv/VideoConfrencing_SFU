@@ -23,6 +23,9 @@ export default function Lobby() {
     if (user) {
       localStorage.setItem('userEmail', user.email)
       localStorage.setItem('userName', user.name)
+      if (user.id) {
+        localStorage.setItem('userId', user.id)
+      }
       if (user.avatar_url) {
         localStorage.setItem('userAvatar', user.avatar_url)
       }
@@ -104,9 +107,10 @@ export default function Lobby() {
       // Get user information
       const userEmail = localStorage.getItem('userEmail') || sessionStorage.getItem('userEmail');
       const userName = localStorage.getItem('userName') || sessionStorage.getItem('userName');
-      const userInfo = { name: userName || 'Anonymous', email: userEmail || '' };
-      
-      socket.emit('createRoom', (response) => {
+      const userId = localStorage.getItem('userId') || sessionStorage.getItem('userId');
+      const userInfo = { name: userName || 'Anonymous', email: userEmail || '', userId: userId };
+
+      socket.emit('createRoom', { userInfo }, (response) => {
         setIsCreating(false)
         if (response.error) {
           console.error('Error creating room:', response.error)
@@ -114,7 +118,7 @@ export default function Lobby() {
           return
         }
         console.log('Room created and auto-joined successfully:', response.roomId, 'isHost:', response.isHost)
-        
+
         // Store host socket ID in localStorage when creating room
         if (response.isHost && response.roomId) {
           localStorage.setItem(`room_${response.roomId}_host_socket`, socket.id)
@@ -124,7 +128,7 @@ export default function Lobby() {
           localStorage.setItem(`room_${response.roomId}_host_id`, response.hostId)
           console.log('Host socket ID stored in localStorage:', socket.id)
         }
-        
+
         // Navigate to room - no need for separate joinRoom call since auto-joined
         navigate(`/room/${response.roomId}?autoJoined=true`)
       })
@@ -151,8 +155,9 @@ export default function Lobby() {
       // Get user information
       const userEmail = localStorage.getItem('userEmail') || sessionStorage.getItem('userEmail');
       const userName = localStorage.getItem('userName') || sessionStorage.getItem('userName');
-      const userInfo = { name: userName || 'Anonymous', email: userEmail || '' };
-      
+      const userId = localStorage.getItem('userId') || sessionStorage.getItem('userId');
+      const userInfo = { name: userName || 'Anonymous', email: userEmail || '', userId: userId };
+
       socket.emit('joinRoom', { roomId: roomId.trim(), userInfo: userInfo }, (response) => {
         setIsJoining(false)
         if (response.error) {
@@ -207,9 +212,9 @@ export default function Lobby() {
   return (
     <div className="new-lobby-container">
       {/* Header with Logo */}
-      <header style={{ 
-        borderBottom: '1px solid #e5e7eb', 
-        background: '#ffffffcc', 
+      <header style={{
+        borderBottom: '1px solid #e5e7eb',
+        background: '#ffffffcc',
         backdropFilter: 'blur(6px)',
         position: 'sticky',
         top: 0,
@@ -247,11 +252,11 @@ export default function Lobby() {
             conferencing platform. Built for teams that value seamless
             collaboration.
           </p>
-          
+
           <div className="hero-actions">
             {isAuthenticated ? (
               <>
-                <button 
+                <button
                   onClick={createRoom}
                   disabled={!isConnected || isCreating}
                   className={`start-meeting-btn ${isCreating ? 'loading' : ''}`}
@@ -259,8 +264,8 @@ export default function Lobby() {
                   <span className="btn-icon">📹</span>
                   {isCreating ? 'Creating...' : 'Start New Meeting'}
                 </button>
-                
-                <button 
+
+                <button
                   onClick={scheduleNewMeeting}
                   className="schedule-meeting-btn"
                 >
@@ -274,7 +279,7 @@ export default function Lobby() {
                   <span className="btn-icon">🔐</span>
                   Sign In to Start
                 </Link>
-                
+
                 <Link to="/auth" className="schedule-meeting-btn" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                   <span className="btn-icon">📝</span>
                   Create Account
@@ -283,16 +288,16 @@ export default function Lobby() {
             )}
           </div>
         </div>
-        
+
         {/* Local Video Preview - Only for authenticated users */}
         {isAuthenticated && (
           <div className="video-preview-section">
             <div className="preview-container">
               <div className="preview-label">Preview Mode</div>
-              <video 
+              <video
                 ref={videoRef}
-                autoPlay 
-                muted 
+                autoPlay
+                muted
                 playsInline
                 className="local-video-preview"
               />
@@ -302,17 +307,17 @@ export default function Lobby() {
                   <p>Camera Off</p>
                 </div>
               )}
-              
+
               {/* Video Controls */}
               <div className="preview-controls">
-                <button 
+                <button
                   onClick={toggleMic}
                   className={`control-btn ${!isMicEnabled ? 'disabled' : ''}`}
                   title={isMicEnabled ? 'Mute' : 'Unmute'}
                 >
                   {isMicEnabled ? '🎤' : '🔇'}
                 </button>
-                <button 
+                <button
                   onClick={toggleVideo}
                   className={`control-btn ${!isVideoEnabled ? 'disabled' : ''}`}
                   title={isVideoEnabled ? 'Turn off camera' : 'Turn on camera'}
@@ -324,7 +329,7 @@ export default function Lobby() {
           </div>
         )}
       </div>
-      
+
       {/* Join Meeting Section */}
       {isAuthenticated && (
         <div className="join-meeting-section">
@@ -339,7 +344,7 @@ export default function Lobby() {
                 onKeyPress={(e) => e.key === 'Enter' && joinRoom()}
                 className="meeting-input"
               />
-              <button 
+              <button
                 onClick={joinRoom}
                 disabled={!isConnected || isJoining || !roomId.trim()}
                 className={`join-btn ${isJoining ? 'loading' : ''}`}
@@ -350,9 +355,9 @@ export default function Lobby() {
           </div>
         </div>
       )}
-      
 
-      
+
+
       {/* Connection Status */}
       <div className="connection-status">
         <div className={`status-indicator ${isConnected ? 'connected' : 'connecting'}`}>

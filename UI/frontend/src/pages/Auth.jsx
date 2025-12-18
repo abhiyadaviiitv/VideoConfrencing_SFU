@@ -16,11 +16,11 @@ export default function Auth() {
   useEffect(() => {
     const isFromSignUp = searchParams.get('mode') === 'signup'
     const redirectTo = searchParams.get('redirect')
-    
+
     if (isFromSignUp) {
       setIsSignUp(true)
     }
-    
+
     // Store redirect path for after authentication
     if (redirectTo) {
       localStorage.setItem('authRedirect', redirectTo)
@@ -45,7 +45,7 @@ export default function Auth() {
     setError('')
   }
 
-  const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'
+  const apiBase = import.meta.env.VITE_API_BASE_URL || 'https://192.168.2.105:4000'
   const googleAuthUrl = `${apiBase}/auth/google`
   const githubAuthUrl = `${apiBase}/auth/github`
 
@@ -61,12 +61,12 @@ export default function Auth() {
               'Authorization': `Bearer ${token}`
             }
           })
-          
+
           if (response.ok) {
             const data = await response.json()
             // Use the login function from AuthContext
             login(token, data.user)
-            
+
             // Check if there's a redirect path stored
             const redirectPath = localStorage.getItem('authRedirect')
             if (redirectPath) {
@@ -80,7 +80,7 @@ export default function Auth() {
           console.error('Error fetching user info:', error)
         }
       }
-      
+
       fetchUserInfo()
     }
   }, [searchParams, navigate, apiBase, login])
@@ -89,7 +89,7 @@ export default function Auth() {
     e.preventDefault()
     setLoading(true)
     setError('')
-    
+
     try {
       const endpoint = isSignUp ? '/auth/signup' : '/auth/login'
       const res = await fetch(`${apiBase}${endpoint}`, {
@@ -97,16 +97,16 @@ export default function Auth() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       })
-      
+
       const data = await res.json()
-      
+
       if (!res.ok) {
         throw new Error(data.error || 'Authentication failed')
       }
-      
+
       // Use the login function from AuthContext
       login(data.token, data.user)
-      
+
       // Check if there's a redirect path stored
       const redirectPath = localStorage.getItem('authRedirect')
       if (redirectPath) {

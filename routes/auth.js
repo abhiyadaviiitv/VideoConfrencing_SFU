@@ -70,7 +70,7 @@ router.post('/signup', async (req, res) => {
 
     // Create new user
     const user = await User.create({ email, password, name })
-    
+
     // Generate JWT token
     const token = User.generateToken(user)
 
@@ -93,7 +93,7 @@ router.post('/signup', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body
-    console.log(email , password);
+    console.log(email, password);
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' })
     }
@@ -252,12 +252,12 @@ router.get('/google/callback',
   passport.authenticate('google', { failureRedirect: '/auth' }),
   (req, res) => {
     const token = User.generateToken(req.user)
-    const frontend = process.env.FRONTEND_URL || 'http://localhost:5173'
+    const frontend = process.env.FRONTEND_URL || 'https://192.168.2.105.nip.io:5173'
     const redirectUrl = req.session.oauthRedirect || '/lobby'
-    
+
     // Clear the redirect from session
     delete req.session.oauthRedirect
-    
+
     res.redirect(`${frontend}${redirectUrl}?token=${token}`)
   }
 )
@@ -276,12 +276,12 @@ router.get('/github/callback',
   passport.authenticate('github', { failureRedirect: '/auth' }),
   (req, res) => {
     const token = User.generateToken(req.user)
-    const frontend = process.env.FRONTEND_URL || 'http://localhost:5173'
+    const frontend = process.env.FRONTEND_URL || 'https://192.168.2.105.nip.io:5173'
     const redirectUrl = req.session.oauthRedirect || '/lobby'
-    
+
     // Clear the redirect from session
     delete req.session.oauthRedirect
-    
+
     res.redirect(`${frontend}${redirectUrl}?token=${token}`)
   }
 )
