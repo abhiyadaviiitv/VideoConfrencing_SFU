@@ -7,6 +7,11 @@ import HandRaise from '../components/HandRaise';
 import ParticipantList from '../components/ParticipantList';
 import PollBox from '../components/PollBox';
 import socket from '../lib/socket';
+import {
+  MicIcon, MicOffIcon, CameraIcon, CameraOffIcon,
+  ScreenShareIcon, StopScreenShareIcon, ChatIcon,
+  UsersIcon, PollIcon, RecordIcon, StopRecordIcon
+} from '../components/Icons';
 import './Room.css';
 
 // Global variables exactly like index.js - but isolated per component instance
@@ -24,10 +29,9 @@ let isSettingUpPipeline = false; // Flag to prevent multiple simultaneous setups
 // let screenVideoProducer = null;
 // let screenAudioProducer = null;
 
-const consumers = new Map();
-const peerVideos = new Map(); // Maps peer IDs to video elements
-
-// Exact parameters from index.js
+// MOVED TO REFS:
+// const consumers = new Map();
+// const peerVideos = new Map(); // Maps peer IDs to video elements
 const videoparams = {
   encodings: [
     {
@@ -71,9 +75,9 @@ const iceServers = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   {
-    urls: 'turn:relay1.expressturn.com:3480',
-    username: '000000002065332507',
-    credential: '2dm9ltTqJIjVrRq/LI/QvTm0nPY='
+    urls: 'turn:free.expressturn.com:3478',
+    username: '000000002083993993',
+    credential: 'jd1vHFiGtlJVQUfj/e0ouOSu4Rg='
   }
 ];
 
@@ -97,6 +101,7 @@ const Room = () => {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isParticipantListOpen, setIsParticipantListOpen] = useState(false);
   const [isPollOpen, setIsPollOpen] = useState(false);
+  const [connectionError, setConnectionError] = useState(null);
   const [participants, setParticipants] = useState([])
   const [raisedHands, setRaisedHands] = useState([])
   const [participantJoinTimes, setParticipantJoinTimes] = useState(new Map())
@@ -113,38 +118,88 @@ const Room = () => {
   const [screenAudioProducer, setScreenAudioProducer] = useState(null);
   const [presenterNotification, setPresenterNotification] = useState(null);
 
+  // Ref to track screen sharing state locally avoiding closure staleness
+  const isScreenSharingRef = useRef(false);
+
   const localVideoRef = useRef();
   const remoteVideosRef = useRef();
+
+  // Refs for tracking media state (fixes React StrictMode/Re-render issues)
+  const consumersRef = useRef(new Map());
+  const peerVideosRef = useRef(new Map());
+
+  // Refs to prevent duplicate room joins (CRITICAL: prevents transport race conditions)
+  const hasJoinedRef = useRef(false);
+  const isJoiningRef = useRef(false);
 
   // Function to get current user information from database
   const getCurrentUserInfo = async () => {
     try {
-      // Get user info from localStorage or session
+      // 1. Check for SSO Token in URL (Priority)
+      const params = new URLSearchParams(window.location.search);
+      const urlToken = params.get('token');
+
+      if (urlToken) {
+        try {
+          // Basic JWT decode (if no library needed, or use jwt-decode if available)
+          // Using simple base64 decode for the payload
+          const base64Url = urlToken.split('.')[1];
+          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+          const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function (c) {
+            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+          }).join(''));
+
+          const decoded = JSON.parse(jsonPayload);
+          console.log("Using SSO Token identity:", decoded);
+
+          const userInfo = {
+            name: decoded.name || decoded.username || 'Learnsphere User',
+            email: decoded.email,
+            avatar: decoded.avatar_url || 'default-avatar.png',
+            id: decoded.userId || decoded.id,
+            isHost: decoded.isHost
+          };
+
+          setCurrentUserInfo(userInfo);
+          if (decoded.isHost) {
+            setIsHost(true);
+          }
+
+          // Store ephemerally if needed, or just rely on this state
+          return userInfo;
+        } catch (e) {
+          console.error("Failed to parse SSO token from URL:", e);
+        }
+      }
+
+      // 2. Get user info from localStorage or session
+      const token = localStorage.getItem('jwt') || sessionStorage.getItem('jwt');
       const userEmail = localStorage.getItem('userEmail') || sessionStorage.getItem('userEmail');
       const userName = localStorage.getItem('userName') || sessionStorage.getItem('userName');
       const userAvatar = localStorage.getItem('userAvatar') || sessionStorage.getItem('userAvatar');
-      const userId = localStorage.getItem('userId') || sessionStorage.getItem('userId');
 
       if (userEmail && userName) {
-        const userInfo = {
-          name: userName,
-          email: userEmail,
-          userId: userId,
-          avatar: userAvatar || 'default-avatar.png'
-        };
-        setCurrentUserInfo(userInfo);
-        return userInfo;
-      }
+        const apiBase = import.meta.env.VITE_API_BASE_URL || `https://${window.location.hostname}:4000`;
+        const response = await fetch(`${apiBase}/auth/me`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
 
-      // If not in storage, try to get from database via API
-      const response = await fetch('/api/user/current', {
-        credentials: 'include'
-      });
-
-      if (response.ok) {
-        const userData = await response.json();
-        setCurrentUserInfo(userData);
-        return userData;
+        if (response.ok) {
+          const data = await response.json();
+          const userInfo = {
+            name: data.user.name,
+            email: data.user.email,
+            avatar: data.user.avatar_url || 'default-avatar.png',
+            id: data.user.id
+          };
+          setCurrentUserInfo(userInfo);
+          // Also update storage to keep it in sync
+          localStorage.setItem('userName', userInfo.name);
+          localStorage.setItem('userEmail', userInfo.email);
+          return userInfo;
+        }
       }
 
       // Fallback to anonymous
@@ -164,7 +219,8 @@ const Room = () => {
       currentSocketId: socket?.id,
       isHost,
       hostId,
-      consumersCount: consumers.size,
+      hostId,
+      consumersCount: consumersRef.current.size,
       participantJoinTimes: Array.from(participantJoinTimes.entries())
     });
 
@@ -181,8 +237,9 @@ const Room = () => {
 
     // Add participants from consumers (remote participants)
     const uniquePeerIds = new Set();
-    consumers.forEach((entry) => {
-      if (entry.peerId && entry.peerId !== (socket?.id || 'anonymous')) {
+    consumersRef.current.forEach((entry) => {
+      // Strictly exclude current socket ID and any null/undefined peerIds
+      if (entry.peerId && entry.peerId !== socket?.id) {
         uniquePeerIds.add(entry.peerId);
       }
     });
@@ -194,16 +251,18 @@ const Room = () => {
       console.log(`Participant ${peerId}: isHost=${isRemoteHost}, hostId=${hostId}, joinTime=${joinTime}`);
 
       // Try to get participant name from server
-      const participantName = getParticipantName(peerId);
+      const participantName = getParticipantName(peerId) || participantProfiles.get(peerId)?.name || 'Unknown User';
+      const participantInfo = participantProfiles.get(peerId);
 
       participantList.push({
         id: peerId,
-        name: participantName || `Client ${peerId.substring(0, 8)}`, // Use name from server or fallback
+        name: participantName,
         isHost: isRemoteHost,
-        isMuted: remotePeerStatus.get(peerId)?.isMuted || false,
-        isCameraOff: remotePeerStatus.get(peerId)?.isCameraOff || false,
-        joinedAt: joinTime || new Date(), // Use actual join time or current time as fallback
-        isCurrentUser: false
+        isMuted: false, // You might want to track this via consumers
+        isCameraOff: false, // You might want to track this via consumers
+        joinedAt: joinTime || new Date(),
+        isCurrentUser: false,
+        ...participantInfo
       });
     });
 
@@ -216,9 +275,9 @@ const Room = () => {
     const remoteVideos = remoteVideosRef.current;
     if (!remoteVideos) return;
 
-    console.log('Updating video tile labels with profiles:', Array.from(participantProfiles.entries()));
+    // First, update grid layout based on DOM elements
+    updateGridLayout();
 
-    // Update all video tile labels
     const videoContainers = remoteVideos.querySelectorAll('.video-container');
     videoContainers.forEach(container => {
       const video = container.querySelector('video');
@@ -229,49 +288,139 @@ const Room = () => {
         const isScreenShare = video.dataset.mediaType === 'screenShare';
 
         if (!isScreenShare) {
-          // Get participant name from profiles or participants
           const participantName = getParticipantName(peerId);
           const displayName = participantName || `User ${peerId.slice(-6)}`;
-
-          console.log(`Updating label for ${peerId}: ${displayName} (isHost: ${isHostPeer})`);
-
-          // Update label text and styling for non-screen share videos
-          let labelText = displayName
-          if (isHostPeer) {
-            labelText = `${displayName} (Host)`
-          }
-          // Check if it's the current user (my own video)
-          if (peerId === socket?.id) {
-            labelText = `${labelText} (You)`
-          }
+          let labelText = displayName;
+          if (isHostPeer) labelText = `${displayName} (Host)`;
+          if (peerId === socket?.id) labelText = `${labelText} (You)`;
 
           label.textContent = `${isHostPeer ? '👑 ' : ''}${labelText}`;
           if (isHostPeer) {
             label.style.background = 'rgba(16, 185, 129, 0.9)';
             label.style.border = '1px solid rgba(16, 185, 129, 0.3)';
           } else {
-            label.style.background = '';
+            label.style.background = ''; // Reset
             label.style.border = '';
-          }
-
-          // Handle hand raise indicator
-          const overlay = container.querySelector('.video-overlay');
-          if (overlay) {
-            const existingHand = overlay.querySelector('.hand-raise-indicator');
-            const isHandRaised = raisedHands.some(h => h.userId === peerId);
-
-            if (isHandRaised && !existingHand) {
-              const handDiv = document.createElement('div');
-              handDiv.className = 'hand-raise-indicator';
-              handDiv.textContent = '✋';
-              overlay.appendChild(handDiv);
-            } else if (!isHandRaised && existingHand) {
-              existingHand.remove();
-            }
           }
         }
       }
     });
+  };
+
+  // STRICT Grid Calculation and Presenter Mode Logic
+  const updateGridLayout = () => {
+    const remoteVideos = remoteVideosRef.current;
+    if (!remoteVideos || !remoteVideos.parentElement) return;
+
+    const mainGrid = remoteVideos.parentElement; // The .video-grid container
+    const containers = Array.from(mainGrid.querySelectorAll('.video-container')); // Helper array
+
+    // STRICT filtering: 
+    // 1. Must NOT be 'screen-share' class
+    // 2. Must NOT have data-media-type="screenShare"
+    // 3. Must be visible (display != none) - This prevents counting hidden avatars/ghosts if any exist
+    const standardContainers = containers.filter(c => {
+      const isScreenShare = c.classList.contains('screen-share') || c.getAttribute('data-media-type') === 'screenShare';
+      const isHidden = c.style.display === 'none';
+      return !isScreenShare && !isHidden;
+    });
+    const totalCount = standardContainers.length;
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/ea5934e6-ae9a-4d80-a4da-154574354d01', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'Room.jsx:293', message: 'Grid layout calculation', data: { roomId, totalContainers: containers.length, totalCount, standardContainers: standardContainers.length, containerIds: Array.from(containers).map(c => c.getAttribute('data-peer-id')) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H2' }) }).catch(() => { });
+    // #endregion
+
+    // Check for Screen Share (Presenter Mode)
+    // defined by isScreenSharing state OR existence of screen share element
+    const screenShareContainer = mainGrid.querySelector('.video-container.screen-share') ||
+      mainGrid.querySelector('[data-media-type="screenShare"]')?.closest('.video-container');
+
+    // Presenter Mode Active (Use Ref to avoid stale state in closures)
+    if (screenShareContainer || isScreenSharingRef.current) {
+      console.log('Activating Presenter Mode. Reason:', {
+        foundContainer: !!screenShareContainer,
+        containerHtml: screenShareContainer?.outerHTML,
+        refValue: isScreenSharingRef.current
+      });
+      mainGrid.classList.add('presenter-mode');
+
+      // Remove presenter-active from everyone first
+      containers.forEach(c => c.classList.remove('presenter-active'));
+
+      let activePresenterElement = null;
+
+      // Identify the active presenter element
+      if (screenShareContainer) {
+        activePresenterElement = screenShareContainer;
+      } else if (isScreenSharingRef.current) {
+        // Local screen share case - now standardized
+        activePresenterElement = mainGrid.querySelector('.local-screen-share-container') || mainGrid.querySelector('.video-container.screen-share[data-peer-id="local"]') || mainGrid.querySelector('.video-container[data-media-type="screenShare"]');
+      }
+
+      // If we found the presenter element, Activate it!
+      if (activePresenterElement) {
+        activePresenterElement.classList.add('presenter-active');
+
+        // CRITICAL: Move to first position in DOM to ensure it hits grid-column: 1
+        // This fixes the issue where CSS Grid auto-placement might put it in the sidebar
+        if (mainGrid.firstChild !== activePresenterElement) {
+          console.log('Moving presenter element to start of grid for correct layout');
+          mainGrid.insertBefore(activePresenterElement, mainGrid.firstChild);
+        }
+      }
+
+      // In Presenter Mode, grid-cols irrelevant as fixed by CSS
+      mainGrid.style.removeProperty('--grid-cols');
+      mainGrid.style.removeProperty('--grid-rows');
+
+    } else {
+      // Standard Grid Mode
+      mainGrid.classList.remove('presenter-mode');
+      containers.forEach(c => {
+        c.classList.remove('presenter-active');
+        // CRITICAL: Remove any explicit grid positioning from standard mode containers
+        // This ensures auto-placement works correctly
+        if (!c.classList.contains('screen-share') && c.getAttribute('data-media-type') !== 'screenShare') {
+          c.style.gridColumn = '';
+          c.style.gridRow = '';
+        }
+      });
+
+      // Calculate columns based on count strictly
+      let cols = 1;
+      // Explicit thresholds for grid columns
+      if (totalCount <= 1) cols = 1;
+      else if (totalCount === 2) cols = 2;
+      else if (totalCount === 3) cols = 2; // Strict requirement: 2 cols for 3 items (2 top, 1 bottom)
+      else if (totalCount === 4) cols = 2; // 2x2 grid
+      else if (totalCount <= 6) cols = 3; // 5-6 items -> 3 cols
+      else if (totalCount <= 9) cols = 3; // 7-9 items -> 3 cols
+      else if (totalCount <= 12) cols = 4; // 10-12 items -> 4 cols
+      else cols = 4; // 13+ -> max 4 cols
+
+      // Calculate rows to ensure proper wrapping
+      const rows = Math.ceil(totalCount / cols);
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/ea5934e6-ae9a-4d80-a4da-154574354d01', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'Room.jsx:330', message: 'Grid calculation result', data: { roomId, totalCount, cols, rows, expectedLayout: `${rows}x${cols}` }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H3' }) }).catch(() => { });
+      // #endregion
+
+      // Update CSS variables - CRITICAL for Room.css to pick it up
+      mainGrid.style.setProperty('--grid-cols', cols.toString());
+      mainGrid.style.setProperty('--grid-rows', rows.toString());
+
+      // CRITICAL: Set inline style to force grid-template-rows (overrides CSS if needed)
+      mainGrid.style.gridTemplateRows = `repeat(${rows}, minmax(200px, 1fr))`;
+      mainGrid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+      // Ensure row-first flow
+      mainGrid.style.gridAutoFlow = 'row';
+
+      // #region agent log
+      const computedStyle = window.getComputedStyle(mainGrid);
+      fetch('http://127.0.0.1:7243/ingest/ea5934e6-ae9a-4d80-a4da-154574354d01', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'Room.jsx:377', message: 'Grid CSS applied', data: { roomId, totalCount, cols, rows, cssCols: computedStyle.getPropertyValue('--grid-cols'), cssRows: computedStyle.getPropertyValue('--grid-rows'), gridTemplateRows: computedStyle.gridTemplateRows, gridTemplateColumns: computedStyle.gridTemplateColumns, gridAutoFlow: computedStyle.gridAutoFlow, containerCount: standardContainers.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'GRID_LAYOUT' }) }).catch(() => { });
+      // #endregion
+
+      console.log(`Updated Grid Layout: ${totalCount} items -> ${cols} cols, ${rows} rows`);
+      console.log(`Applied CSS: grid-template-columns: repeat(${cols}, 1fr), grid-template-rows: repeat(${rows}, minmax(200px, 1fr))`);
+    }
   };
 
   // Function to get participant name from profiles
@@ -330,10 +479,53 @@ const Room = () => {
 
   // Exact functions from index.js
   function addRemoteMedia(producerId, track, kind, peerId, appData, isNewProducer = false) { // Add isNewProducer parameter
-    if (consumers.has(producerId)) return;
+    // IMPROVED: Check if entry exists AND has a valid DOM element
+    // This prevents race conditions where the map has an entry but the DOM element was removed
+    const existingEntry = consumersRef.current.get(producerId);
+    if (existingEntry && existingEntry.el) {
+      // Check if the element is still in the DOM
+      const elementInDOM = existingEntry.el.isConnected ||
+        (remoteVideosRef.current && remoteVideosRef.current.contains(existingEntry.el.parentElement));
 
-    console.log('Adding remote media:', { producerId, kind, peerId, isNewProducer });
+      if (elementInDOM) {
+        console.log('addRemoteMedia: Entry already exists with valid DOM element, skipping:', { producerId, kind });
+        return;
+      } else {
+        console.warn('addRemoteMedia: Entry exists but element not in DOM, cleaning up and re-creating:', { producerId, kind });
+        // Clean up the orphaned entry
+        consumersRef.current.delete(producerId);
+      }
+    }
+
+    // Verify it's not our own producer (prevents "seeing myself" duplicates)
+    if (peerId === socket?.id) {
+      console.warn('Attempted to add own media as remote media, skipping.', { producerId, kind });
+      return;
+    }
+
+    // Prevent duplicate video tiles for the same peer (unless screen share)
+    if (kind === 'video' && (!appData || appData.mediaType !== 'screenShare')) {
+      if (remoteVideosRef.current) {
+        const existing = remoteVideosRef.current.querySelector(`.video-container[data-peer-id="${peerId}"]:not(.screen-share):not([data-media-type="screenShare"])`);
+        if (existing) {
+          console.log(`Cleaning up existing video tile for ${peerId} before adding new one`);
+          existing.remove();
+          // Clean up potential zombie consumer map entry
+          const oldPid = existing.getAttribute('data-producer-id');
+          if (oldPid && oldPid !== producerId && consumersRef.current.has(oldPid)) {
+            const oldC = consumersRef.current.get(oldPid);
+            oldC.consumer?.close();
+            consumersRef.current.delete(oldPid);
+          }
+        }
+      }
+    }
+
+    console.log('Adding remote media:', { producerId, kind, peerId, isNewProducer, trackId: track?.id, trackEnabled: track?.enabled, trackReadyState: track?.readyState });
     console.log('remoteVideosRef.current:', remoteVideosRef.current);
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/ea5934e6-ae9a-4d80-a4da-154574354d01', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'Room.jsx:494', message: 'addRemoteMedia called', data: { roomId, producerId, kind, peerId, trackId: track?.id, trackEnabled: track?.enabled, trackMuted: track?.muted, trackReadyState: track?.readyState, hasRemoteVideosRef: !!remoteVideosRef.current }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'VIDEO_CONSUMER' }) }).catch(() => { });
+    // #endregion
 
     let el;
     if (kind === 'audio') {
@@ -364,182 +556,185 @@ const Room = () => {
       el = document.createElement('video');
       el.playsInline = true;
       el.autoplay = true;
+
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/ea5934e6-ae9a-4d80-a4da-154574354d01', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'Room.jsx:520', message: 'Track state before adding to MediaStream', data: { roomId, producerId, peerId, trackId: track?.id, trackKind: track?.kind, trackEnabled: track?.enabled, trackMuted: track?.muted, trackReadyState: track?.readyState, trackLabel: track?.label }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'TRACK_STATE' }) }).catch(() => { });
+      // #endregion
+
+      // CRITICAL: Ensure track is enabled and ready before adding to MediaStream
+      if (!track.enabled) {
+        console.warn('⚠️ Track is disabled, enabling it:', track.id);
+        track.enabled = true;
+      }
+
+      // Verify track is ready
+      if (track.readyState !== 'live') {
+        console.warn('⚠️ Track not live when adding to MediaStream:', {
+          trackId: track.id,
+          readyState: track.readyState,
+          enabled: track.enabled,
+          muted: track.muted
+        });
+      }
+
       el.srcObject = new MediaStream([track]);
-      el.classList.add('video', 'remote-video');
-
-      // Add data attributes for identification and cleanup
-      el.setAttribute('data-producer-id', producerId);
+      el.className = 'video';
       el.setAttribute('data-peer-id', peerId);
-      if (appData && appData.mediaType) {
-        el.setAttribute('data-media-type', appData.mediaType);
-      }
-      videoContainer.setAttribute('data-producer-id', producerId);
-      videoContainer.setAttribute('data-peer-id', peerId);
+      el.setAttribute('data-media-type', appData?.mediaType || 'video');
 
-      // Add screen share identification
-      if (appData && appData.mediaType === 'screenShare') {
-        el.classList.add('screen-share');
-        el.setAttribute('data-media-type', 'screenShare');
-        videoContainer.setAttribute('data-media-type', 'screenShare');
+      if (appData?.mediaType === 'screenShare') {
         videoContainer.classList.add('screen-share');
-
-        // Only show presenter notification for truly new screen shares, not existing ones
-        if (isNewProducer) {
-          const presenterName = `Client ${peerId.substring(0, 8)}`;
-          setPresenterNotification(presenterName);
-
-          // Auto-hide notification after 5 seconds
-          setTimeout(() => {
-            setPresenterNotification(null);
-          }, 5000);
-        }
+        el.classList.add('screen-share');
       }
 
+      videoContainer.appendChild(el);
+
+      // Create overlay for name/status
       const overlay = document.createElement('div');
       overlay.className = 'video-overlay';
 
-      const label = document.createElement('span');
-      label.className = 'peer-label';
-      const isHostPeer = peerId === hostId;
-      const isScreenShare = appData && appData.mediaType === 'screenShare';
+      // Add peer label
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'peer-label';
 
-      if (isScreenShare) {
-        const presenterName = getParticipantName(peerId) || `Client ${peerId.substring(0, 8)}`;
-        label.textContent = `🖥️ ${presenterName} is presenting`;
-        label.style.background = 'rgba(52, 168, 83, 0.9)';
-        label.style.border = '1px solid rgba(52, 168, 83, 0.3)';
-        label.style.color = 'white';
+      // If it's a screen share, show "Presenter Name's Screen"
+      if (appData?.mediaType === 'screenShare') {
+        const presenterName = appData.presenterName || getParticipantName(peerId) || `User ${peerId.slice(0, 5)}`;
+        labelSpan.textContent = `🖥️ ${presenterName}'s Screen`;
       } else {
-        const participantName = getParticipantName(peerId) || `Client ${peerId.substring(0, 8)}`;
-        const displayText = isHostPeer ? `${participantName} (Host)` : participantName;
-        label.textContent = `${isHostPeer ? '👑 ' : ''}${displayText}`; // Add crown and (Host) for host
-        if (isHostPeer) {
-          label.style.background = 'rgba(16, 185, 129, 0.9)';
-          label.style.border = '1px solid rgba(16, 185, 129, 0.3)';
-        }
+        labelSpan.textContent = getParticipantName(peerId) || `User ${peerId.slice(0, 5)}`;
       }
 
-      // Add status indicators container
-      const statusContainer = document.createElement('div');
-      statusContainer.className = 'status-indicators';
-      statusContainer.style.cssText = 'display: flex; gap: 4px; margin-top: 4px;';
-
-      // Add mute indicator
-      const muteIndicator = document.createElement('span');
-      muteIndicator.className = 'mute-indicator';
-      muteIndicator.innerHTML = '🔇';
-      muteIndicator.style.cssText = 'background: rgba(244, 67, 54, 0.9); color: white; padding: 2px 6px; border-radius: 4px; font-size: 12px; display: none;';
-
-      // Add camera off indicator
-      const cameraIndicator = document.createElement('span');
-      cameraIndicator.className = 'camera-indicator';
-      cameraIndicator.innerHTML = '📷';
-      cameraIndicator.style.cssText = 'background: rgba(244, 67, 54, 0.9); color: white; padding: 2px 6px; border-radius: 4px; font-size: 12px; display: none;';
-
-      statusContainer.appendChild(muteIndicator);
-      statusContainer.appendChild(cameraIndicator);
-
-      // Add hand raise indicator
-      const handRaiseIndicator = document.createElement('div');
-      handRaiseIndicator.className = 'hand-raise-indicator';
-      handRaiseIndicator.innerHTML = '✋';
-      handRaiseIndicator.style.display = 'none';
-
-      // Add avatar container for when video is off
-      const avatarContainer = document.createElement('div');
-      avatarContainer.className = 'avatar-container';
-      avatarContainer.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.3); backdrop-filter: blur(10px); z-index: 1;';
-
-      const avatar = document.createElement('img');
-      avatar.className = 'participant-avatar';
-      avatar.style.cssText = 'width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255, 255, 255, 0.3);';
-      avatar.src = getParticipantAvatar(peerId);
-      avatar.alt = getParticipantName(peerId) || 'Participant';
-
-      // Add fallback for when avatar fails to load
-      avatar.onerror = () => {
-        avatar.style.display = 'none';
-        const initialsDiv = document.createElement('div');
-        initialsDiv.className = 'avatar-initials';
-        initialsDiv.style.cssText = 'width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: bold; border: 3px solid rgba(255, 255, 255, 0.3);';
-        initialsDiv.textContent = getParticipantInitials(peerId);
-        avatarContainer.appendChild(initialsDiv);
-      };
-
-      avatarContainer.appendChild(avatar);
-
-      overlay.appendChild(label);
-      overlay.appendChild(statusContainer);
-      overlay.appendChild(handRaiseIndicator);
-      videoContainer.appendChild(el);
-      videoContainer.appendChild(avatarContainer);
+      overlay.appendChild(labelSpan);
       videoContainer.appendChild(overlay);
 
-      // Store reference to update hand raise indicator
+      // Add mute/camera-off indicators (hidden by default)
+      const indicators = document.createElement('div');
+      indicators.className = 'status-indicators';
+      indicators.style.position = 'absolute';
+      indicators.style.bottom = '12px';
+      indicators.style.right = '12px';
+      indicators.style.display = 'flex';
+      indicators.style.gap = '4px';
+
+      const muteSpan = document.createElement('span');
+      muteSpan.className = 'mute-indicator';
+      muteSpan.textContent = '🔇';
+      muteSpan.style.background = 'rgba(244, 67, 54, 0.9)';
+      muteSpan.style.color = 'white';
+      muteSpan.style.padding = '2px 6px';
+      muteSpan.style.borderRadius = '4px';
+      muteSpan.style.fontSize = '12px';
+      muteSpan.style.display = 'none'; // Hidden by default
+      indicators.appendChild(muteSpan);
+
+      const camSpan = document.createElement('span');
+      camSpan.className = 'camera-indicator';
+      camSpan.textContent = '📷'; // Camera off icon
+      camSpan.style.background = 'rgba(244, 67, 54, 0.9)';
+      camSpan.style.color = 'white';
+      camSpan.style.padding = '2px 6px';
+      camSpan.style.borderRadius = '4px';
+      camSpan.style.fontSize = '12px';
+      camSpan.style.display = 'none'; // Hidden by default
+      indicators.appendChild(camSpan);
+
+      videoContainer.appendChild(indicators);
+
+      // Create Avatar Container (hidden by default, shown when camera is off)
+      const avatarContainer = document.createElement('div');
+      avatarContainer.className = 'avatar-container';
+      avatarContainer.style.display = 'none'; // Hidden by default
+
+      const initials = document.createElement('div');
+      initials.className = 'avatar-initials';
+      const pName = getParticipantName(peerId) || '?';
+      initials.textContent = pName.slice(0, 2).toUpperCase();
+
+      avatarContainer.appendChild(initials);
+      videoContainer.appendChild(avatarContainer);
+
       videoContainer.setAttribute('data-peer-id', peerId);
+      videoContainer.setAttribute('data-producer-id', producerId);
+      videoContainer.setAttribute('data-media-type', appData?.mediaType || 'video');
 
       if (remoteVideosRef.current) {
         remoteVideosRef.current.appendChild(videoContainer);
-        console.log('Video container added successfully');
+        console.log('✅ Video container added successfully:', {
+          producerId,
+          peerId,
+          kind,
+          containerInDOM: videoContainer.isConnected,
+          videoConnected: el.isConnected
+        });
+        consumersRef.current.get(producerId).el = el; // Store ref to video element
+
+        // Update grid layout after adding new video
+        setTimeout(() => updateGridLayout(), 100);
+
+        // Attempt to play
+        el.play().catch(e => {
+          console.error('Error playing name/video:', e);
+        });
       } else {
         console.error('remoteVideosRef.current is null when trying to add video container');
-        console.error('This might be the "Node cannot be found" error');
       }
-
-      // Store video element with peer ID
-      peerVideos.set(peerId, el);
     }
+    // Store video element with peer ID
+    peerVideosRef.current.set(peerId, el);
 
     // Store peerId with consumer entry
-    consumers.set(producerId, { el, consumer: null, peerId }); // Add peerId here
+    consumersRef.current.set(producerId, { el, consumer: null, peerId }); // Add peerId here
 
     console.log(hostId);
     // Update participants list when new media is added
     updateParticipants();
+
+    // NEW: Enforce Grid Layout update on structure change
+    updateGridLayout();
   }
 
   function removeRemoteMedia(producerId, appData = null) {
-    const entry = consumers.get(producerId);
+    const entry = consumersRef.current.get(producerId);
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/ea5934e6-ae9a-4d80-a4da-154574354d01', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'Room.jsx:572', message: 'Removing remote media', data: { roomId, producerId, hasEntry: !!entry, appData, consumersSize: consumersRef.current.size, peerId: entry?.peerId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H7' }) }).catch(() => { });
+    // #endregion
+
     if (!entry) {
-      // If no entry found, try to find and remove by producerId data attribute
+      // Fallback: cleanup by selector if no map entry
       if (remoteVideosRef.current) {
         const elements = remoteVideosRef.current.querySelectorAll(`[data-producer-id="${producerId}"]`);
         elements.forEach(el => {
-          if (el.tagName === 'VIDEO' && el.parentElement?.className === 'video-container') {
+          if (el.tagName === 'VIDEO' && el.parentElement?.className.includes('video-container')) {
             el.parentElement.remove();
           } else {
             el.remove();
           }
         });
       }
-      return;
-    }
-
-    // Remove from peerVideos if video
-    if (entry.el.tagName === 'VIDEO') {
-      peerVideos.delete(entry.peerId);
-      // Remove the video container instead of just the video element
-      const container = entry.el.parentElement;
-      if (container && container.className === 'video-container') {
-        container.remove();
+    } else {
+      // Standard cleanup via map entry
+      if (entry.el.tagName === 'VIDEO') {
+        peerVideosRef.current.delete(entry.peerId);
+        const container = entry.el.parentElement;
+        if (container && container.className.includes('video-container')) {
+          container.remove();
+        } else {
+          entry.el.remove();
+        }
       } else {
         entry.el.remove();
       }
-    } else {
-      entry.el.remove();
-    }
 
-    entry.consumer?.close();
-    consumers.delete(producerId);
+      entry.consumer?.close();
+      consumersRef.current.delete(producerId);
+    }
 
     // Additional cleanup for screen shares
     if (appData && appData.mediaType === 'screenShare') {
       console.log('Cleaning up screen share elements for producer:', producerId);
-
-      // Clear presenter notification when screen share ends
       setPresenterNotification(null);
 
-      // Remove any remaining screen share elements
       if (remoteVideosRef.current) {
         const screenShareElements = remoteVideosRef.current.querySelectorAll('.screen-share, [data-media-type="screenShare"]');
         screenShareElements.forEach(el => {
@@ -556,6 +751,9 @@ const Room = () => {
 
     // Update participants list when media is removed
     updateParticipants();
+
+    // NEW: Enforce Grid Layout update on structure change
+    setTimeout(() => updateGridLayout(), 50);
   }
 
   // Function to create local screen share preview for the presenter
@@ -567,9 +765,14 @@ const Room = () => {
     }
 
     // Create screen share preview container
+    // UNIFY: Use 'video-container' and 'screen-share' classes to match remote streams
     const screenShareContainer = document.createElement('div');
     screenShareContainer.id = 'local-screen-share';
-    screenShareContainer.className = 'local-screen-share-container';
+    screenShareContainer.className = 'video-container local-screen-share-container screen-share'; // Added screen-share class
+
+    // Add data attributes for grid layout logic
+    screenShareContainer.setAttribute('data-peer-id', socket?.id || 'local');
+    screenShareContainer.setAttribute('data-media-type', 'screenShare');
 
     // Create video element for screen share preview
     const screenVideo = document.createElement('video');
@@ -577,7 +780,7 @@ const Room = () => {
     screenVideo.muted = true;
     screenVideo.playsInline = true;
     screenVideo.srcObject = stream;
-    screenVideo.className = 'local-screen-share-video';
+    screenVideo.className = 'video local-screen-share-video screen-share'; // Match remote video classes
 
     // Create "You are presenting" indicator
     const indicator = document.createElement('div');
@@ -589,7 +792,8 @@ const Room = () => {
 
     // Add to the video grid
     if (remoteVideosRef.current) {
-      remoteVideosRef.current.appendChild(screenShareContainer);
+      // Insert at the beginning to be consistent with presenter mode logic
+      remoteVideosRef.current.insertBefore(screenShareContainer, remoteVideosRef.current.firstChild);
     }
   }
 
@@ -832,24 +1036,118 @@ const Room = () => {
 
   const connectRecvTransport = async (producerInfo, isNewProducer = false) => {
     try {
+      // CRITICAL: Check if consumer already exists for this producer
+      // This prevents duplicate consumers which cause video to be recreated and go back to muted state
+      const existingEntry = consumersRef.current.get(producerInfo.producerId);
+      if (existingEntry && existingEntry.consumer) {
+        console.log('⚠️ Consumer already exists for producer:', producerInfo.producerId, 'Skipping duplicate creation');
+        return;
+      }
+
+      console.log('📹 Creating new consumer for producer:', producerInfo.producerId, producerInfo.kind);
+
+      // CRITICAL: Create consumer with paused: true to match server-side state
+      // Without this, client consumer.paused will be false even though server consumer is paused!
       const consumer = await consumerTransport.consume({
         id: producerInfo.id,
         producerId: producerInfo.producerId,
         kind: producerInfo.kind,
-        rtpParameters: producerInfo.rtpParameters
+        rtpParameters: producerInfo.rtpParameters,
+        paused: true  // MUST match backend's paused: true (app.js line 1105)
       });
 
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/ea5934e6-ae9a-4d80-a4da-154574354d01', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'Room.jsx:1137', message: 'Consumer created, track state', data: { roomId, consumerId: consumer.id, producerId: producerInfo.producerId, trackId: consumer.track?.id, trackKind: consumer.track?.kind, trackEnabled: consumer.track?.enabled, trackMuted: consumer.track?.muted, trackReadyState: consumer.track?.readyState, consumerPaused: consumer.paused, hasTrack: !!consumer.track }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'CONSUMER_CREATE' }) }).catch(() => { });
+      // #endregion
+
       const { track } = consumer;
+
+      // CRITICAL: Verify track exists
+      if (!track) {
+        console.error('❌ No track available from consumer:', consumer.id);
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/ea5934e6-ae9a-4d80-a4da-154574354d01', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'Room.jsx:1145', message: 'No track from consumer', data: { roomId, consumerId: consumer.id, producerId: producerInfo.producerId, consumerPaused: consumer.paused }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'CONSUMER_CREATE' }) }).catch(() => { });
+        // #endregion
+        return;
+      }
+
+      // CRITICAL FIX: Explicitly enable the track to unmute it
+      // When consumer is created with paused:true, the track starts muted
+      // This prevents video frames from flowing even after server-side resume
+      if (!track.enabled) {
+        console.log('🔧 Enabling muted track:', track.id);
+        track.enabled = true;
+      }
+
+      console.log('📹 Track state before adding to DOM:', {
+        trackId: track.id,
+        kind: track.kind,
+        enabled: track.enabled,
+        muted: track.muted,
+        readyState: track.readyState
+      });
+
+
+      // CRITICAL: Add media to DOM FIRST (addRemoteMedia will create the entry)
+      // Don't store consumer before calling addRemoteMedia - it has an early return check!
+      console.log('📹 Calling addRemoteMedia for:', { producerId: producerInfo.producerId, kind: producerInfo.kind, peerId: producerInfo.peerId, trackId: track?.id, trackEnabled: track?.enabled, trackMuted: track?.muted, trackReadyState: track?.readyState });
+
+      // CRITICAL FIX: Resume consumer BEFORE adding to DOM
+      // This ensures the track is active and unmuted when the MediaStream is created
+      console.log(`🔄 Resuming consumer ${consumer.id} BEFORE adding to DOM (paused: ${consumer.paused})`);
+
+      // First, resume on client side
+      try {
+        await consumer.resume();
+        console.log('✅ Consumer resumed on client (before DOM):', consumer.id, {
+          paused: consumer.paused,
+          trackMuted: track.muted,
+          trackEnabled: track.enabled,
+          trackReadyState: track.readyState
+        });
+      } catch (resumeError) {
+        console.error('❌ Client-side consumer resume error:', resumeError);
+      }
+
+      // Then, resume on server side
+      await new Promise((resolve) => {
+        socket.emit('consumer-resume', { consumerId: consumer.id, roomId: roomId }, (error) => {
+          if (error) {
+            console.error('❌ Consumer resume error:', error);
+          } else {
+            console.log('✅ Consumer resumed successfully on server:', consumer.id);
+          }
+          resolve();
+        });
+      });
+
+      // Small delay to ensure frames start flowing
+      await new Promise(r => setTimeout(r, 100));
+
+      console.log('📹 Track state after resume, before adding to DOM:', {
+        trackId: track.id,
+        enabled: track.enabled,
+        muted: track.muted,
+        readyState: track.readyState
+      });
+
+      // Now add to DOM with resumed track
       addRemoteMedia(producerInfo.producerId, track, producerInfo.kind, producerInfo.peerId, producerInfo.appData, isNewProducer);
 
-      // Store consumer
-      const entry = consumers.get(producerInfo.producerId) || {};
-      entry.consumer = consumer;
-      consumers.set(producerInfo.producerId, entry);
+      // Store consumer AFTER adding media (addRemoteMedia creates entry with consumer: null)
+      const entry = consumersRef.current.get(producerInfo.producerId);
+      if (entry) {
+        entry.consumer = consumer;
+        consumersRef.current.set(producerInfo.producerId, entry);
+      } else {
+        console.error('❌ Entry not found in consumersRef after addRemoteMedia for producerId:', producerInfo.producerId);
+      }
 
-      socket.emit('consumer-resume', { consumerId: consumer.id, roomId: roomId });
     } catch (error) {
       console.error('Error connecting recv transport:', error);
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/ea5934e6-ae9a-4d80-a4da-154574354d01', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'Room.jsx:1068', message: 'Consumer creation error', data: { roomId, producerId: producerInfo.producerId, error: error.message, errorStack: error.stack }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'CONSUMER_CREATE' }) }).catch(() => { });
+      // #endregion
     }
   };
 
@@ -893,13 +1191,13 @@ const Room = () => {
       }
 
       // Clean up existing consumers
-      consumers.forEach(({ consumer }) => {
+      consumersRef.current.forEach(({ consumer }) => {
         if (consumer) {
           console.log('Cleaning up existing consumer:', consumer.id);
           consumer.close();
         }
       });
-      consumers.clear();
+      consumersRef.current.clear();
 
       // Reset device if it exists
       if (device) {
@@ -1034,7 +1332,9 @@ const Room = () => {
       screenAudioProducer?.close();
       setScreenVideoProducer(null);
       setScreenAudioProducer(null);
+      setScreenAudioProducer(null);
       setIsScreenSharing(false);
+      isScreenSharingRef.current = false;
 
       // Remove local screen share preview
       const localScreenShare = document.getElementById('local-screen-share');
@@ -1043,6 +1343,8 @@ const Room = () => {
       }
 
       console.log('Screen share stopped and server notified');
+      // CRITICAL: Ensure grid layout updates locally
+      setTimeout(() => updateGridLayout(), 200);
       return;
     }
 
@@ -1069,7 +1371,10 @@ const Room = () => {
       const sVideoProducer = await producerTransport.produce({
         track: videoTrack,
         kind: 'video',
-        appData: { mediaType: 'screenShare' }
+        appData: {
+          mediaType: 'screenShare',
+          presenterName: currentUserInfo?.name || 'Unknown Presenter'
+        }
       });
       setScreenVideoProducer(sVideoProducer);
 
@@ -1078,7 +1383,10 @@ const Room = () => {
         const sAudioProducer = await producerTransport.produce({
           track: audioTrack,
           kind: 'audio',
-          appData: { mediaType: 'screenShareAudio' }
+          appData: {
+            mediaType: 'screenShareAudio',
+            presenterName: currentUserInfo?.name || 'Unknown Presenter'
+          }
         });
         setScreenAudioProducer(sAudioProducer);
       }
@@ -1092,22 +1400,43 @@ const Room = () => {
           localScreenShare.remove();
         }
 
-        // Close producers and notify server
-        if (screenVideoProducer) {
-          screenVideoProducer.close();
+        // Close producers and notify server using LOCAL variables to avoid closure staleness
+        if (sVideoProducer) {
+          sVideoProducer.close();
           setScreenVideoProducer(null);
         }
-        if (screenAudioProducer) {
+        if (audioTrack && typeof sAudioProducer !== 'undefined') {
+          // If we had audio, close it too. 
+          // Note: sAudioProducer might be undefined if not created, so check logic above.
+          // Actually, clearer to check the state setter or track? 
+          // Better: we can't easily access the sAudioProducer if we didn't declare it in a shared scope 
+          // but we can trust the state cleanup or just notify server.
+          // Relying on producerClosed emit is safest.
+        }
+
+        // Re-emit producerClosed using the local producer reference
+        socket.emit('producerClosed', {
+          producerId: sVideoProducer.id,
+          appData: sVideoProducer.appData
+        });
+
+        if (screenAudioProducer) { // Fallback to state if we didn't capture local audio producer
           screenAudioProducer.close();
           setScreenAudioProducer(null);
         }
 
         setIsScreenSharing(false);
+        isScreenSharingRef.current = false;
         console.log('Screen share cleanup completed');
+        // CRITICAL: Ensure grid layout updates locally
+        setTimeout(() => updateGridLayout(), 200);
       };
 
       setIsScreenSharing(true);
+      isScreenSharingRef.current = true;
       console.log('Screen share started');
+      // Update grid layout immediately for local presenter
+      setTimeout(() => updateGridLayout(), 100);
     } catch (error) {
       console.error('Error starting screen share:', error);
     }
@@ -1152,9 +1481,9 @@ const Room = () => {
     }
 
     // Close all consumers
-    consumers.forEach(({ consumer }) => consumer?.close());
-    consumers.clear();
-    peerVideos.clear();
+    consumersRef.current.forEach(({ consumer }) => consumer?.close());
+    consumersRef.current.clear();
+    peerVideosRef.current.clear();
 
     // Disconnect socket
     if (socket) {
@@ -1167,6 +1496,7 @@ const Room = () => {
     setIsMicOn(true);
     setIsCamOn(true);
     setIsScreenSharing(false);
+    isScreenSharingRef.current = false;
     setIsHost(false);
     setHostId(null);
 
@@ -1201,7 +1531,29 @@ const Room = () => {
       socket.emit('getRoomInfo', { roomId }, async (response) => {
         if (response.error) {
           console.error('Error getting room info:', response.error);
-          // Fallback to localStorage if server call fails
+
+          if (response.error === 'Room does not exist') {
+            console.log('Room does not exist (auto-join), attempting to create it as host...');
+            // Get user info to pass to createRoom
+            const userInfo = await getCurrentUserInfo();
+
+            socket.emit('createRoom', { roomId, userInfo }, async (createResponse) => {
+              if (createResponse.error) {
+                console.error('Failed to lazy-create room:', createResponse.error);
+                alert('Failed to initialize meeting: ' + createResponse.error);
+                setIsInRoom(false);
+              } else {
+                console.log('Lazy-created room successfully:', createResponse);
+                setIsHost(true);
+                setHostId(socket.id);
+                // Proceed with setup
+                finishAutoJoinSetup();
+              }
+            });
+            return;
+          }
+
+          // Fallback to localStorage if server call fails (other errors)
           const storedHostId = localStorage.getItem(`room_${roomId}_host_id`);
           const wasHost = localStorage.getItem(`room_${roomId}_was_host`) === 'true';
           setIsHost(wasHost);
@@ -1218,49 +1570,76 @@ const Room = () => {
           });
         }
 
-        // Set room join time for current user
-        const joinTime = new Date();
-        setRoomJoinTime(joinTime);
-        setParticipantJoinTimes(prev => new Map(prev.set(socket.id, joinTime)));
+        // Helper function to proceed with setup
+        const finishAutoJoinSetup = async () => {
+          // Set room join time for current user
+          const joinTime = new Date();
+          setRoomJoinTime(joinTime);
+          setParticipantJoinTimes(prev => new Map(prev.set(socket.id, joinTime)));
 
-        console.log('Auto-join setup complete:', {
-          isHost: response?.isHost || localStorage.getItem(`room_${roomId}_was_host`) === 'true',
-          hostId: response?.hostId || localStorage.getItem(`room_${roomId}_host_id`) || socket.id,
-          currentSocketId: socket.id
-        });
+          console.log('Auto-join setup complete:', {
+            isHost: isHost,
+            hostId: hostId,
+            currentSocketId: socket.id
+          });
 
-        // Add a small delay to ensure server has processed room membership
-        setTimeout(async () => {
-          try {
-            // Set up Mediasoup pipeline after server confirms room membership
-            await setupMediasoupPipeline();
+          // Add a small delay to ensure server has processing room membership
+          setTimeout(async () => {
+            try {
+              // Set up Mediasoup pipeline after server confirms room membership
+              await setupMediasoupPipeline();
 
-            // Request existing producers
-            requestExistingProducers();
+              // Request existing producers
+              requestExistingProducers();
 
-            // Mark as successfully joined
-            setIsInRoom(true);
-            console.log('Auto-join completed, setIsInRoom(true) called');
+              // Mark as successfully joined
+              setIsInRoom(true);
+              console.log('Auto-join completed, setIsInRoom(true) called');
 
-            // Note: User is already auto-joined to chat on server side during joinRoom
-            // No need to emit join-chat again to avoid duplicate join messages
+              // Note: User is already auto-joined to chat on server side during joinRoom
+              // No need to emit join-chat again to avoid duplicate join messages
 
-            // Broadcast initial status to other participants
-            setTimeout(() => {
-              if (socket) {
-                socket.emit('status-changed', {
-                  roomId: roomId,
-                  peerId: socket.id,
-                  isMuted: !isMicOn,
-                  isCameraOff: !isCamOn
-                });
+              // Broadcast initial status to other participants
+              setTimeout(() => {
+                if (socket) {
+                  socket.emit('status-changed', {
+                    roomId: roomId,
+                    peerId: socket.id,
+                    isMuted: !isMicOn,
+                    isCameraOff: !isCamOn
+                  });
+                }
+              }, 1000);
+            } catch (error) {
+              console.error('Error during auto-join setup:', error);
+              setIsInRoom(false);
+            }
+          }, 500); // 500ms delay to ensure server processing
+        };
+
+        // If we didn't lazy-create, run setup now
+        // But for STUDENTS (who didn't create the room), we MUST emit joinRoom to register socket on server
+        if (response.error !== 'Room does not exist') {
+          console.log('Auto-join: Room exists. Ensuring we are joined on server...');
+          // We need to call joinRoom strictly to ensure media transport can be created
+          // Even if we are host (reloaded), joinRoom is idempotent
+          const userInfo = await getCurrentUserInfo();
+          const params = new URLSearchParams(window.location.search);
+          const urlToken = params.get('token');
+
+          socket.emit('joinRoom', { roomId, userInfo, token: urlToken }, (joinResponse) => {
+            if (joinResponse.error) {
+              console.error("Auto-join failed:", joinResponse.error);
+              if (joinResponse.error.includes('Restricted')) {
+                alert("⛔ ACCESS DENIED\n\nRestricted to Learnsphere users.");
+                window.location.href = '/';
               }
-            }, 1000);
-          } catch (error) {
-            console.error('Error during auto-join setup:', error);
-            setIsInRoom(false);
-          }
-        }, 500); // 500ms delay to ensure server processing
+            } else {
+              console.log("Auto-join confirmed by server.");
+              finishAutoJoinSetup();
+            }
+          });
+        }
       });
 
       return;
@@ -1270,13 +1649,79 @@ const Room = () => {
       // Get user information before joining
       const userInfo = await getCurrentUserInfo();
 
+      // Get token from URL if available (for Restricted/SSO join)
+      const params = new URLSearchParams(window.location.search);
+      const urlToken = params.get('token');
+
       // Inform the server about joining a room
-      socket.emit('joinRoom', { roomId: roomId, userInfo: userInfo }, async (response) => {
+      socket.emit('joinRoom', { roomId: roomId, userInfo: userInfo, token: urlToken }, async (response) => {
         if (response.error) {
           console.error('Error joining room:', response.error);
-          alert('Failed to join room: ' + response.error);
+
+          // Handle Restricted Access Error
+          if (response.error.includes('Restricted')) {
+            alert("⛔ ACCESS DENIED\n\nThis meeting is restricted to Learnsphere users only.\nPlease join via the Learnsphere Dashboard.");
+            window.location.href = 'about:blank';
+            return;
+          }
+
+          console.log('Room does not exist (joinUrl), attempting to create it as host...');
+
+          socket.emit('createRoom', { roomId, userInfo, token: urlToken }, async (createResponse) => {
+            if (createResponse.error) {
+              console.error('Failed to lazy-create room:', createResponse.error);
+              alert('Failed to initialize meeting: ' + createResponse.error);
+              setIsInRoom(false);
+            } else {
+              console.log('Lazy-created room successfully:', createResponse);
+
+              // Manual success setup since we just created it
+              setDisplayRoomCode(roomId);
+
+              // Store host info
+              localStorage.setItem(`room_${roomId}_host_socket`, socket.id);
+              localStorage.setItem(`room_${roomId}_was_host`, 'true');
+              localStorage.setItem(`room_${roomId}_host_id`, socket.id); // Add this for consistency
+
+              setIsHost(true);
+              setHostId(socket.id);
+
+              // Set join time
+              const joinTime = new Date();
+              setRoomJoinTime(joinTime);
+              setParticipantJoinTimes(prev => new Map(prev.set(socket.id, joinTime)));
+
+              // Setup pipeline
+              await setupMediasoupPipeline();
+
+              // No other producers or participants yet
+
+              setIsInRoom(true);
+              console.log('Lazy-create join completed');
+
+              // Register profile
+              const token = localStorage.getItem('jwt') || sessionStorage.getItem('jwt');
+              if (token) {
+                socket.emit('register-profile', { token, roomId });
+              }
+
+              // Broadcast status
+              setTimeout(() => {
+                if (socket) {
+                  socket.emit('status-changed', {
+                    roomId: roomId,
+                    peerId: socket.id,
+                    isMuted: !isMicOn,
+                    isCameraOff: !isCamOn
+                  });
+                }
+              }, 1000);
+            }
+          });
           return;
         }
+
+
         console.log('Successfully joined room:', roomId);
         setDisplayRoomCode(roomId);
 
@@ -1419,8 +1864,18 @@ const Room = () => {
   useEffect(() => {
     // Note: socket is imported directly, no need to reassign
     const handleJoinRoom = () => {
-      if (urlRoomId) {
-        joinRoomFromUrl();
+      // CRITICAL: Prevent multiple simultaneous joins using refs (not local vars)
+      if (urlRoomId && !hasJoinedRef.current && !isJoiningRef.current) {
+        console.log('🚀 Starting room join process');
+        hasJoinedRef.current = true;
+        isJoiningRef.current = true;
+        joinRoomFromUrl().finally(() => {
+          isJoiningRef.current = false;
+        });
+      } else if (isJoiningRef.current) {
+        console.log('⏳ Join already in progress, skipping duplicate call');
+      } else if (hasJoinedRef.current) {
+        console.log('✅ Already joined room, skipping duplicate call');
       }
     };
 
@@ -1454,7 +1909,7 @@ const Room = () => {
       console.log('CLIENT activeSpeaker', peerId);
 
       // Highlight video for this peer
-      const videoEl = peerVideos.get(peerId);
+      const videoEl = peerVideosRef.current.get(peerId);
       if (videoEl) {
         // Add active class to both video element and its container
         videoEl.classList.add('active');
@@ -1485,9 +1940,9 @@ const Room = () => {
       setAudioProducer(null);
       setScreenVideoProducer(null);
       setScreenAudioProducer(null);
-      consumers.forEach(({ consumer }) => consumer?.close());
-      consumers.clear();
-      peerVideos.clear();
+      consumersRef.current.forEach(({ consumer }) => consumer?.close());
+      consumersRef.current.clear();
+      peerVideosRef.current.clear();
     });
 
     // Listen for peer status changes
@@ -1539,6 +1994,10 @@ const Room = () => {
     // Listen for participant joined events
     socket.on('participant-joined', ({ participantId, userInfo, hostId: serverHostId, roomId: joinedRoomId }) => {
       console.log(`Participant ${participantId} joined room ${joinedRoomId}, server hostId: ${serverHostId}`, userInfo);
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/ea5934e6-ae9a-4d80-a4da-154574354d01', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'Room.jsx:1732', message: 'Participant joined event', data: { participantId, userInfo, joinedRoomId, currentRoomId: roomId, matches: joinedRoomId === roomId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H6' }) }).catch(() => { });
+      // #endregion
+      // IMPORTANT: Only process if this event is for OUR room (prevents cross-room interference)
       if (joinedRoomId === roomId) {
         // Track join time for new participant
         const currentTime = new Date();
@@ -1547,11 +2006,23 @@ const Room = () => {
         // Store participant information for name lookup
         if (userInfo) {
           console.log(`IMMEDIATE PROFILE STORAGE for ${participantId}:`, userInfo);
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/ea5934e6-ae9a-4d80-a4da-154574354d01', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'Room.jsx:1740', message: 'Storing participant profile', data: { participantId, userInfo, existingProfile: participantProfiles.get(participantId) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H6' }) }).catch(() => { });
+          // #endregion
 
           // 1. Update profiles map immediately
           setParticipantProfiles(prev => {
             const newMap = new Map(prev);
+            // Check for duplicates before adding
+            if (newMap.has(participantId)) {
+              // #region agent log
+              fetch('http://127.0.0.1:7243/ingest/ea5934e6-ae9a-4d80-a4da-154574354d01', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'Room.jsx:1746', message: 'Duplicate participant profile detected', data: { roomId, participantId, existing: newMap.get(participantId), new: userInfo, profilesSize: newMap.size }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H7' }) }).catch(() => { });
+              // #endregion
+            }
             newMap.set(participantId, userInfo);
+            // #region agent log
+            fetch('http://127.0.0.1:7243/ingest/ea5934e6-ae9a-4d80-a4da-154574354d01', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'Room.jsx:1750', message: 'Stored participant profile', data: { roomId, participantId, userInfo, profilesSize: newMap.size }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H6' }) }).catch(() => { });
+            // #endregion
             return newMap;
           });
 
@@ -1608,6 +2079,56 @@ const Room = () => {
       updateParticipants();
     });
 
+    // Listen for presenter started event (screen sharing)
+    socket.on('presenter-started', ({ presenterId, presenterName }) => {
+      console.log(`📺 Presenter started: ${presenterName} (${presenterId})`);
+
+      // Show notification
+      setPresenterNotification(presenterName);
+
+      // Auto-hide notification after 5 seconds
+      setTimeout(() => {
+        setPresenterNotification(null);
+      }, 5000);
+
+      // Store presenter info in profiles for later reference
+      setParticipantProfiles(prev => {
+        const newMap = new Map(prev);
+        const existing = newMap.get(presenterId) || {};
+        newMap.set(presenterId, {
+          ...existing,
+          name: presenterName,
+          isPresenting: true
+        });
+        return newMap;
+      });
+
+      // Update video tile labels immediately
+      setTimeout(() => updateVideoTileLabels(), 100);
+    });
+
+    // Listen for presenter stopped event
+    socket.on('presenter-stopped', ({ presenterId }) => {
+      console.log(`📺 Presenter stopped: ${presenterId}`);
+
+      // Clear presenter notification
+      setPresenterNotification(null);
+
+      // Remove presenting flag from profile
+      setParticipantProfiles(prev => {
+        const newMap = new Map(prev);
+        const existing = newMap.get(presenterId);
+        if (existing) {
+          delete existing.isPresenting;
+          newMap.set(presenterId, existing);
+        }
+        return newMap;
+      });
+
+      // CRITICAL: Ensure grid layout updates after a short delay
+      setTimeout(() => updateGridLayout(), 200);
+    });
+
     // Listen for poll updates
     socket.on('poll-created', (pollData) => {
       console.log('New poll created:', pollData);
@@ -1626,10 +2147,35 @@ const Room = () => {
 
     socket.on('error', (error) => {
       console.error('Socket error:', error);
+      // Only set connection error if we are stuck connecting
+      if (!isInRoom) {
+        setConnectionError(error.message || 'Socket error occurred');
+      }
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+      setConnectionError(error.message || 'Failed to connect to server');
     });
 
     socket.on('newProducer', (data) => {
       console.log('New producer announced:', data);
+
+      // If presenter name is included (for screen shares), store it
+      if (data.appData?.presenterName && data.peerId) {
+        console.log(`📺 Storing presenter name: ${data.appData.presenterName} for ${data.peerId}`);
+        setParticipantProfiles(prev => {
+          const newMap = new Map(prev);
+          const existing = newMap.get(data.peerId) || {};
+          newMap.set(data.peerId, {
+            ...existing,
+            name: data.appData.presenterName,
+            isPresenting: true
+          });
+          return newMap;
+        });
+      }
+
       const myPids = [videoProducer?.id, audioProducer?.id].filter(Boolean);
       if (data.producerId && !myPids.includes(data.producerId)) { // Don't consume our own producer
         // Track join time for new participants (only if not already tracked)
@@ -1664,6 +2210,13 @@ const Room = () => {
 
     socket.on('hands-cleared', () => {
       setRaisedHands([]);
+    });
+
+    // Handle duplicate session detection
+    socket.on('session-duplicate', () => {
+      alert("⚠️ You have joined this class from another tab or device.\n\nThis session will be closed.");
+      setIsInRoom(false);
+      window.location.href = '/';
     });
 
     // Poll event listeners are handled by PollBox component to avoid conflicts
@@ -1743,6 +2296,9 @@ const Room = () => {
       // The participant list will update automatically through the disconnect event
     });
 
+    // Handle presenter events
+
+
     return () => {
       // Clean up event listeners
       socket.off('connection-success', handleConnectionSuccess);
@@ -1760,6 +2316,13 @@ const Room = () => {
       socket.off('poll-created');
       socket.off('poll-voted');
       socket.off('poll-closed');
+      socket.off('presenter-started');
+      socket.off('presenter-stopped');
+      socket.off('newProducer');  // CRITICAL: Prevents duplicate consumers
+      socket.off('connect_error');
+      socket.off('hand-raised');
+      socket.off('hand-lowered');
+      socket.off('hands-cleared');
     };
   }, [urlRoomId]); // Only re-run when urlRoomId changes
 
@@ -1834,7 +2397,7 @@ const Room = () => {
   // Update participants when mic/camera states change
   useEffect(() => {
     updateParticipants();
-  }, [isMicOn, isCamOn, consumers, socket?.id, isHost, hostId]);
+  }, [isMicOn, isCamOn, socket?.id, isHost, hostId]);
 
   // Update hand raise indicators on video tiles
   useEffect(() => {
@@ -1861,7 +2424,7 @@ const Room = () => {
     console.log('Participant profiles changed, updating video tiles');
     updateVideoTileLabels();
     updateParticipants();
-  }, [participantProfiles, raisedHands]);
+  }, [participantProfiles]);
 
   // Update video tile labels when participants list changes (fallback)
   useEffect(() => {
@@ -1879,6 +2442,24 @@ const Room = () => {
       alert('Failed to copy room code. Please copy manually: ' + displayRoomCode);
     }
   };
+
+  if (connectionError) {
+    return (
+      <div className="room-loading">
+        <div className="loading-content error">
+          <div className="error-icon">❌</div>
+          <h2>Connection Failed</h2>
+          <p>{connectionError}</p>
+          <button onClick={() => window.location.reload()} className="retry-btn">
+            Try Again
+          </button>
+          <button onClick={() => navigate('/')} className="back-btn" style={{ marginTop: '10px' }}>
+            Back to Lobby
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!isInRoom) {
     return (
@@ -1982,7 +2563,7 @@ const Room = () => {
           className={`control-btn ${!isMicOn ? 'muted' : ''}`}
           title={isMicOn ? 'Mute microphone' : 'Unmute microphone'}
         >
-          {isMicOn ? '🎤' : '🔇'}
+          {isMicOn ? <MicIcon /> : <MicOffIcon />}
         </button>
 
         <button
@@ -1990,7 +2571,7 @@ const Room = () => {
           className={`control-btn ${!isCamOn ? 'disabled' : ''}`}
           title={isCamOn ? 'Turn off camera' : 'Turn on camera'}
         >
-          {isCamOn ? '📹' : '📷'}
+          {isCamOn ? <CameraIcon /> : <CameraOffIcon />}
         </button>
 
         <button
@@ -1998,7 +2579,7 @@ const Room = () => {
           className={`control-btn ${isScreenSharing ? 'active' : ''}`}
           title={isScreenSharing ? 'Stop screen share' : 'Share screen'}
         >
-          {isScreenSharing ? '🛑' : '🖥️'}
+          {isScreenSharing ? <StopScreenShareIcon /> : <ScreenShareIcon />}
         </button>
 
         <button
@@ -2006,7 +2587,7 @@ const Room = () => {
           className={`control-btn ${isChatOpen ? 'active' : ''}`}
           title="Toggle chat"
         >
-          💬
+          <ChatIcon />
         </button>
 
         <button
@@ -2014,7 +2595,7 @@ const Room = () => {
           className={`control-btn ${isParticipantListOpen ? 'active' : ''}`}
           title="Show participants"
         >
-          👥
+          <UsersIcon />
         </button>
 
         <button
@@ -2022,7 +2603,7 @@ const Room = () => {
           className={`control-btn ${isPollOpen ? 'active' : ''}`}
           title="Toggle polls"
         >
-          📊
+          <PollIcon />
         </button>
 
         <button
@@ -2033,11 +2614,11 @@ const Room = () => {
           className={`control-btn ${isRecording ? 'active' : ''}`}
           title={isRecording ? 'Stop recording' : 'Start recording'}
         >
-          {isRecording ? '⏹️' : '⏺️'}
+          {isRecording ? <StopRecordIcon /> : <RecordIcon />}
         </button>
 
         <HandRaise
-          roomId={roomId}
+          roomId={urlRoomId || roomId}
           currentUserId={socket?.id || 'anonymous'}
           isHost={isHost}
           socket={socket}
@@ -2059,6 +2640,7 @@ const Room = () => {
         roomId={roomId}
         currentUserId={socket?.id || 'anonymous'}
         socket={socket}
+        participantProfiles={participantProfiles}
       />
 
       <ParticipantList

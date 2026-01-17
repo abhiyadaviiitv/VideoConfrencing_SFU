@@ -153,7 +153,8 @@ body {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transform: scaleX(-1); /* Mirror effect */
+  transform: scaleX(-1);
+  /* Mirror effect */
 }
 
 .video-disabled-overlay {
@@ -443,28 +444,28 @@ body {
   .hero-section {
     padding: 40px 40px;
   }
-  
+
   .hero-content {
     padding-right: 40px;
   }
-  
+
   .hero-content h1 {
     font-size: 3rem;
   }
-  
+
   .preview-container {
     width: 280px;
     height: 210px;
   }
-  
+
   .join-meeting-section {
     padding: 30px 40px;
   }
-  
+
   .security-features {
     grid-template-columns: 1fr;
   }
-  
+
 
 }
 
@@ -474,30 +475,30 @@ body {
     padding: 30px 20px;
     text-align: center;
   }
-  
+
   .hero-content {
     padding-right: 0;
     margin-bottom: 40px;
   }
-  
+
   .hero-content h1 {
     font-size: 2.5rem;
   }
-  
+
   .video-preview-section {
     flex: none;
   }
-  
+
   .join-meeting-section,
   .features-section {
     padding: 20px;
   }
-  
+
   .join-input-group {
     flex-direction: column;
     max-width: 300px;
   }
-  
+
   .features-section {
     flex-direction: column;
     align-items: center;
@@ -509,23 +510,23 @@ body {
   .hero-content h1 {
     font-size: 2rem;
   }
-  
+
   .hero-subtitle {
     font-size: 1rem;
   }
-  
+
   .hero-actions {
     flex-direction: column;
     align-items: center;
   }
-  
+
   .start-meeting-btn,
   .schedule-meeting-btn {
     width: 100%;
     max-width: 280px;
     justify-content: center;
   }
-  
+
   .preview-container {
     width: 240px;
     height: 180px;
@@ -563,6 +564,7 @@ body {
     opacity: 0;
     transform: translateY(-20px) scale(0.95);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -742,8 +744,13 @@ body {
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 /* Modal Responsive Design */
@@ -752,16 +759,16 @@ body {
     width: 95%;
     margin: 20px;
   }
-  
+
   .form-row {
     flex-direction: column;
     gap: 0;
   }
-  
+
   .form-actions {
     flex-direction: column;
   }
-  
+
   .cancel-btn,
   .schedule-btn {
     width: 100%;
@@ -782,6 +789,7 @@ body {
     opacity: 0;
     transform: translateX(100%);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);
@@ -966,6 +974,7 @@ body {
     opacity: 0;
     transform: translateY(-10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -1044,11 +1053,11 @@ body {
     right: 10px;
     left: 10px;
   }
-  
+
   .meeting-notification {
     width: 100%;
   }
-  
+
   .scheduled-meetings-section {
     left: 10px;
     right: 10px;
@@ -1090,6 +1099,7 @@ body {
     opacity: 0;
     transform: translateY(30px) scale(0.95);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -1325,7 +1335,7 @@ body {
     width: 95vw;
     height: 80vh;
   }
-  
+
   .message-content {
     max-width: 220px;
   }
@@ -1350,9 +1360,9 @@ body {
   background: white;
   border-radius: 16px;
   width: 450px;
-  height: 650px;
+  height: auto;
   max-width: 90vw;
-  max-height: 90vh;
+  max-height: 80vh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
@@ -1649,11 +1659,11 @@ body {
     width: 95vw;
     height: 80vh;
   }
-  
+
   .participant-item {
     padding: 10px;
   }
-  
+
   .avatar-circle {
     width: 36px;
     height: 36px;
@@ -1701,9 +1711,12 @@ body {
 }
 
 @keyframes pulse-hand {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(1);
   }
+
   50% {
     transform: scale(1.1);
   }
@@ -1833,13 +1846,13 @@ body {
     width: auto;
     max-width: none;
   }
-  
+
   .hand-raise-btn {
     width: 45px;
     height: 45px;
     font-size: 18px;
   }
-  
+
   .raised-hands-indicator {
     width: 20px;
     height: 20px;
@@ -2080,7 +2093,7 @@ body {
   opacity: 0.3;
 }
 
-.lobby-container > * {
+.lobby-container>* {
   position: relative;
   z-index: 1;
 }
@@ -2089,19 +2102,19 @@ body {
   font-size: 3rem;
   font-weight: 400;
   margin-bottom: 3rem;
-  text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   letter-spacing: -0.5px;
 }
 
 .lobby-container input {
   padding: 16px 24px;
   font-size: 16px;
-  border: 2px solid rgba(255,255,255,0.3);
+  border: 2px solid rgba(255, 255, 255, 0.3);
   border-radius: 8px;
   margin: 12px;
   width: 320px;
   text-align: center;
-  background: rgba(255,255,255,0.95);
+  background: rgba(255, 255, 255, 0.95);
   color: #202124;
   font-family: inherit;
   transition: all 0.3s ease;
@@ -2111,13 +2124,14 @@ body {
 .lobby-container input:focus {
   outline: none;
   border-color: #ffffff;
-  background: rgba(255,255,255,1);
+  background: rgba(255, 255, 255, 1);
   transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
 }
 
 /* Button Styles */
-.primary-btn, .secondary-btn {
+.primary-btn,
+.secondary-btn {
   padding: 14px 28px;
   border: none;
   border-radius: 12px;
@@ -2163,7 +2177,8 @@ body {
   transform: translateY(-2px);
 }
 
-.primary-btn:disabled, .secondary-btn:disabled {
+.primary-btn:disabled,
+.secondary-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
@@ -2199,19 +2214,44 @@ body {
 
 /* Keyframe Animations */
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
 }
 
 @keyframes bounce {
-  0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
-  40% { transform: translateY(-10px); }
-  60% { transform: translateY(-5px); }
+
+  0%,
+  20%,
+  50%,
+  80%,
+  100% {
+    transform: translateY(0);
+  }
+
+  40% {
+    transform: translateY(-10px);
+  }
+
+  60% {
+    transform: translateY(-5px);
+  }
 }
 
 @keyframes fadeInUp {
@@ -2219,6 +2259,7 @@ body {
     opacity: 0;
     transform: translateY(30px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -2231,30 +2272,30 @@ body {
     padding: 30px 16px 40px;
     min-height: 100vh;
   }
-  
+
   .lobby-header {
     margin-bottom: 20px;
   }
-  
+
   .lobby-header h1 {
     font-size: 2.5rem;
   }
-  
+
   .action-card {
     padding: 28px 20px;
     margin: 0;
   }
-  
+
   .lobby-content {
     max-width: 100%;
     gap: 20px;
   }
-  
+
   .connection-indicator {
     padding: 10px 20px;
     margin-bottom: 20px;
   }
-  
+
   .lobby-footer {
     margin-top: 20px;
   }
@@ -2264,35 +2305,36 @@ body {
   .lobby-container {
     padding: 20px 12px 30px;
   }
-  
+
   .lobby-header h1 {
     font-size: 2rem;
     letter-spacing: -0.5px;
   }
-  
+
   .subtitle {
     font-size: 1rem;
   }
-  
+
   .action-card {
     padding: 24px 16px;
   }
-  
+
   .card-icon {
     font-size: 2.2rem;
     margin-bottom: 16px;
   }
-  
-  .primary-btn, .secondary-btn {
+
+  .primary-btn,
+  .secondary-btn {
     padding: 12px 20px;
     font-size: 13px;
     min-width: 120px;
   }
-  
+
   .lobby-content {
     gap: 16px;
   }
-  
+
   .lobby-footer {
     margin-top: 16px;
   }
@@ -2308,7 +2350,7 @@ body {
   cursor: pointer;
   margin: 12px;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   font-family: inherit;
   min-width: 140px;
 }
@@ -2316,7 +2358,7 @@ body {
 .lobby-container button:hover {
   background: #f8f9fa;
   transform: translateY(-3px);
-  box-shadow: 0 8px 30px rgba(0,0,0,0.25);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
 }
 
 .lobby-container button:active {
@@ -2350,8 +2392,13 @@ body {
 }
 
 @keyframes spin {
-  0% { transform: translate(-50%, -50%) rotate(0deg); }
-  100% { transform: translate(-50%, -50%) rotate(360deg); }
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
 }
 
 .lobby-container input:disabled {
@@ -2376,7 +2423,7 @@ body {
   align-items: center;
   padding: 16px 24px;
   background: rgba(32, 33, 36, 0.9);
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(10px);
   z-index: 10;
 }
@@ -2446,13 +2493,13 @@ body {
   align-items: center;
   justify-content: center;
   min-height: 200px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   transition: all 0.3s ease;
 }
 
 .video-tile:hover {
   transform: scale(1.02);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
 .video-tile .video-element {
@@ -2468,7 +2515,7 @@ body {
   bottom: 0;
   left: 0;
   right: 0;
-  background: linear-gradient(transparent, rgba(0,0,0,0.7));
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
   padding: 12px;
   display: flex;
   justify-content: space-between;
@@ -2479,14 +2526,14 @@ body {
   color: white;
   font-size: 14px;
   font-weight: 500;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 }
 
 .audio-indicator {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: rgba(0,0,0,0.7);
+  background: rgba(0, 0, 0, 0.7);
   display: none;
   align-items: center;
   justify-content: center;
@@ -2500,7 +2547,8 @@ body {
   display: flex;
 }
 
-.video-disabled, .mic-disabled {
+.video-disabled,
+.mic-disabled {
   position: absolute;
   top: 12px;
   right: 12px;
@@ -2518,9 +2566,17 @@ body {
 }
 
 @keyframes pulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.1); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.1);
+  }
+
+  100% {
+    transform: scale(1);
+  }
 }
 
 /* Local Video (Picture-in-Picture) */
@@ -2535,7 +2591,7 @@ body {
   z-index: 100;
   object-fit: contain;
   background: #3c4043;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   transition: all 0.3s ease;
   cursor: pointer;
 }
@@ -2557,7 +2613,7 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  border-top: 1px solid rgba(255,255,255,0.1);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
   z-index: 1000;
 }
 
@@ -2581,13 +2637,13 @@ body {
   font-size: 24px;
   transition: all 0.3s ease;
   position: relative;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .control-btn:hover {
   background: #5f6368;
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .control-btn.active {
@@ -2618,7 +2674,7 @@ body {
   bottom: 70px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(0,0,0,0.8);
+  background: rgba(0, 0, 0, 0.8);
   color: white;
   padding: 8px 12px;
   border-radius: 6px;
@@ -2692,53 +2748,53 @@ body {
   .lobby-container {
     padding: 20px;
   }
-  
+
   .lobby-container h1 {
     font-size: 2.5rem;
   }
-  
+
   .lobby-container input {
     width: 280px;
     font-size: 14px;
   }
-  
+
   .room-header {
     padding: 12px 16px;
   }
-  
+
   .room-header h2 {
     font-size: 16px;
   }
-  
+
   .participant-count {
     font-size: 12px;
     padding: 4px 8px;
   }
-  
+
   .video-grid {
     padding: 8px;
     padding-bottom: 100px;
     gap: 6px;
   }
-  
+
   .video-tile {
     min-height: 160px;
   }
-  
+
   .controls-bar {
     padding: 16px 12px;
   }
-  
+
   .controls-group {
     gap: 12px;
   }
-  
+
   .control-btn {
     width: 48px;
     height: 48px;
     font-size: 20px;
   }
-  
+
   .control-btn.leave-btn {
     margin-left: 12px;
   }
@@ -2748,31 +2804,32 @@ body {
   .lobby-container input {
     width: 240px;
   }
-  
+
   .room-header {
     padding: 8px 12px;
   }
-  
+
   .video-grid {
     padding: 6px;
     gap: 4px;
   }
-  
+
   .controls-group {
     gap: 8px;
   }
-  
+
   .control-btn {
     width: 44px;
     height: 44px;
     font-size: 18px;
   }
-  
+
   .participant-name {
     font-size: 12px;
   }
-  
-  .video-disabled, .mic-disabled {
+
+  .video-disabled,
+  .mic-disabled {
     font-size: 14px;
     padding: 4px;
   }

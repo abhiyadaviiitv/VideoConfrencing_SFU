@@ -64,7 +64,7 @@ export default function ProfileDropdown() {
   if (!user) return null;
 
   const avatarUrl = user.avatar_url
-    ? (process.env.NODE_ENV === 'production' ? user.avatar_url : `https://192.168.2.105:4000${user.avatar_url}`)
+    ? (process.env.NODE_ENV === 'production' ? user.avatar_url : `https://10.37.80.42:4000${user.avatar_url}`)
     : defaultAvatar;
 
   const handleAvatarChange = (e) => {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams, createSearchParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function Auth() {
@@ -12,13 +12,23 @@ export default function Auth() {
   const [error, setError] = useState('')
   const [formData, setFormData] = useState({ name: '', email: '', password: '' })
 
-  // Check if user came from sign up button or has a redirect
+  // Check if user came from sign up button or has a redirect or SSO registration
   useEffect(() => {
-    const isFromSignUp = searchParams.get('mode') === 'signup'
+    const mode = searchParams.get('mode')
+    const isFromSignUp = mode === 'signup'
+    const isSSORegister = mode === 'sso-register'
     const redirectTo = searchParams.get('redirect')
 
     if (isFromSignUp) {
       setIsSignUp(true)
+    } else if (isSSORegister) {
+      setIsSignUp(true) // Reuse signup UI
+      // Pre-fill form from params
+      setFormData({
+        name: searchParams.get('name') || '',
+        email: searchParams.get('email') || '',
+        password: ''
+      })
     }
 
     // Store redirect path for after authentication
@@ -29,7 +39,9 @@ export default function Auth() {
 
   // Redirect if already authenticated
   useEffect(() => {
-    if (isAuthenticated) {
+    // Don't auto-redirect if we are in the middle of SSO registration to avoid confusion
+    // (Though normally authenticated users shouldn't reach here unless manually navigating)
+    if (isAuthenticated && searchParams.get('mode') !== 'sso-register') {
       const redirectPath = localStorage.getItem('authRedirect')
       if (redirectPath) {
         localStorage.removeItem('authRedirect')
@@ -38,14 +50,14 @@ export default function Auth() {
         navigate('/lobby')
       }
     }
-  }, [isAuthenticated, navigate])
+  }, [isAuthenticated, navigate, searchParams])
 
   const handleInputChange = (e) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }))
     setError('')
   }
 
-  const apiBase = import.meta.env.VITE_API_BASE_URL || 'https://192.168.2.105:4000'
+  const apiBase = import.meta.env.VITE_API_BASE_URL || `https://${window.location.hostname}:4000`
   const googleAuthUrl = `${apiBase}/auth/google`
   const githubAuthUrl = `${apiBase}/auth/github`
 
@@ -90,15 +102,34 @@ export default function Auth() {
     setLoading(true)
     setError('')
 
+    const mode = searchParams.get('mode')
+    const isSSORegister = mode === 'sso-register'
+
     try {
-      const endpoint = isSignUp ? '/auth/signup' : '/auth/login'
+      let endpoint, body;
+
+      if (isSSORegister) {
+        endpoint = '/auth/signup' // Use standard signup
+        body = formData
+      } else {
+        endpoint = isSignUp ? '/auth/signup' : '/auth/login'
+        body = formData
+      }
+
       const res = await fetch(`${apiBase}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(body),
       })
 
-      const data = await res.json()
+      const text = await res.text()
+      let data
+      try {
+        data = JSON.parse(text)
+      } catch (e) {
+        console.error('Failed to parse JSON response:', text)
+        throw new Error(`Server error (${res.status}): ${res.statusText}`)
+      }
 
       if (!res.ok) {
         throw new Error(data.error || 'Authentication failed')
@@ -107,14 +138,31 @@ export default function Auth() {
       // Use the login function from AuthContext
       login(data.token, data.user)
 
-      // Check if there's a redirect path stored
-      const redirectPath = localStorage.getItem('authRedirect')
-      if (redirectPath) {
-        localStorage.removeItem('authRedirect')
-        navigate(redirectPath)
+      // Post-Signup Redirection for SSO
+      const ssoToken = searchParams.get('ssoToken'); // New param name
+      const roomId = searchParams.get('roomId');
+
+      if (ssoToken && roomId) {
+        // Use createSearchParams to ensure safe encoding of the JWT
+        navigate({
+          pathname: `/room/${roomId}`,
+          search: `?${createSearchParams({ token: ssoToken, autoJoined: 'true' }).toString()}`
+        });
+      } else if (isSSORegister) {
+        // ... (Old Logic, likely unused now) ...
+        const isHost = searchParams.get('isHost') === 'true'
+        navigate(`/room/${roomId}?autoJoined=${isHost}`)
       } else {
-        navigate('/lobby')
+        // Normal Signup/Login
+        const redirectPath = localStorage.getItem('authRedirect')
+        if (redirectPath) {
+          localStorage.removeItem('authRedirect')
+          navigate(redirectPath)
+        } else {
+          navigate('/lobby')
+        }
       }
+
     } catch (err) {
       console.error(err)
       setError(err.message || 'Authentication failed')
@@ -127,6 +175,8 @@ export default function Auth() {
     const url = provider === 'google' ? googleAuthUrl : githubAuthUrl
     window.location.href = url
   }
+
+  const isSSORegister = searchParams.get('mode') === 'sso-register'
 
   return (
     <div className="min-h-screen" style={{ background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
@@ -147,29 +197,35 @@ export default function Auth() {
 
         <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 10px 30px rgba(0,0,0,0.08)' }}>
           <div style={{ textAlign: 'center', paddingTop: 20 }}>
-            <h2 style={{ fontSize: 22, fontWeight: 700 }}>{isSignUp ? 'Create your account' : 'Welcome back'}</h2>
+            <h2 style={{ fontSize: 22, fontWeight: 700 }}>
+              {isSSORegister ? 'Complete Registration' : (isSignUp ? 'Create your account' : 'Welcome back')}
+            </h2>
             <p style={{ color: '#6b7280', marginTop: 6 }}>
-              {isSignUp ? 'Sign up to start connecting with your team' : 'Sign in to join your meetings'}
+              {isSSORegister ? 'Set a password to complete your account setup' : (isSignUp ? 'Sign up to start connecting with your team' : 'Sign in to join your meetings')}
             </p>
           </div>
           <div style={{ padding: 20 }}>
-            <div style={{ display: 'grid', gap: 10 }}>
-              <button onClick={() => handleSocialAuth('google')} style={{ height: 48, borderRadius: 10, border: '1px solid #e5e7eb', background: 'white', cursor: 'pointer' }}>
-                Continue with Google
-              </button>
-              <button onClick={() => handleSocialAuth('github')} style={{ height: 48, borderRadius: 10, border: '1px solid #e5e7eb', background: 'white', cursor: 'pointer' }}>
-                Continue with GitHub
-              </button>
-            </div>
+            {!isSSORegister && (
+              <div style={{ display: 'grid', gap: 10 }}>
+                <button onClick={() => handleSocialAuth('google')} style={{ height: 48, borderRadius: 10, border: '1px solid #e5e7eb', background: 'white', cursor: 'pointer' }}>
+                  Continue with Google
+                </button>
+                <button onClick={() => handleSocialAuth('github')} style={{ height: 48, borderRadius: 10, border: '1px solid #e5e7eb', background: 'white', cursor: 'pointer' }}>
+                  Continue with GitHub
+                </button>
+              </div>
+            )}
 
-            <div style={{ position: 'relative', margin: '16px 0' }}>
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center' }}>
-                <div style={{ width: '100%', height: 1, background: '#e5e7eb' }} />
+            {!isSSORegister && (
+              <div style={{ position: 'relative', margin: '16px 0' }}>
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center' }}>
+                  <div style={{ width: '100%', height: 1, background: '#e5e7eb' }} />
+                </div>
+                <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', fontSize: 12, textTransform: 'uppercase' }}>
+                  <span style={{ background: 'white', padding: '0 8px', color: '#6b7280' }}>Or continue with email</span>
+                </div>
               </div>
-              <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', fontSize: 12, textTransform: 'uppercase' }}>
-                <span style={{ background: 'white', padding: '0 8px', color: '#6b7280' }}>Or continue with email</span>
-              </div>
-            </div>
+            )}
 
             {error && (
               <div style={{ background: '#fee2e2', border: '1px solid #fecaca', color: '#dc2626', padding: '12px', borderRadius: 8, marginBottom: 16, fontSize: 14 }}>
@@ -181,19 +237,33 @@ export default function Auth() {
               {isSignUp && (
                 <div style={{ display: 'grid', gap: 6 }}>
                   <label htmlFor="name" style={{ fontSize: 14, fontWeight: 500 }}>Full Name</label>
-                  <input id="name" name="name" type="text" placeholder="Enter your full name" value={formData.name} onChange={handleInputChange} required={isSignUp} style={{ height: 48, borderRadius: 8, border: '1px solid #e5e7eb', padding: '0 12px' }} />
+                  <input
+                    id="name" name="name" type="text" placeholder="Enter your full name"
+                    value={formData.name} onChange={handleInputChange}
+                    required={isSignUp}
+                    disabled={isSSORegister}
+                    style={{ height: 48, borderRadius: 8, border: '1px solid #e5e7eb', padding: '0 12px', background: isSSORegister ? '#f3f4f6' : 'white' }}
+                  />
                 </div>
               )}
 
               <div style={{ display: 'grid', gap: 6 }}>
                 <label htmlFor="email" style={{ fontSize: 14, fontWeight: 500 }}>Email</label>
-                <input id="email" name="email" type="email" placeholder="Enter your email" value={formData.email} onChange={handleInputChange} required style={{ height: 48, borderRadius: 8, border: '1px solid #e5e7eb', padding: '0 12px' }} />
+                <input
+                  id="email" name="email" type="email" placeholder="Enter your email"
+                  value={formData.email} onChange={handleInputChange}
+                  required
+                  disabled={isSSORegister}
+                  style={{ height: 48, borderRadius: 8, border: '1px solid #e5e7eb', padding: '0 12px', background: isSSORegister ? '#f3f4f6' : 'white' }}
+                />
               </div>
 
               <div style={{ display: 'grid', gap: 6 }}>
-                <label htmlFor="password" style={{ fontSize: 14, fontWeight: 500 }}>Password</label>
+                <label htmlFor="password" style={{ fontSize: 14, fontWeight: 500 }}>
+                  {isSSORegister ? 'Create Password' : 'Password'}
+                </label>
                 <div style={{ position: 'relative' }}>
-                  <input id="password" name="password" type={showPassword ? 'text' : 'password'} placeholder="Enter your password" value={formData.password} onChange={handleInputChange} required style={{ height: 48, borderRadius: 8, border: '1px solid #e5e7eb', padding: '0 40px 0 12px', width: '100%' }} />
+                  <input id="password" name="password" type={showPassword ? 'text' : 'password'} placeholder={isSSORegister ? "Create a strong password" : "Enter your password"} value={formData.password} onChange={handleInputChange} required style={{ height: 48, borderRadius: 8, border: '1px solid #e5e7eb', padding: '0 40px 0 12px', width: '100%' }} />
                   <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: 6, top: 6, height: 36, width: 36, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer' }}>
                     {showPassword ? '🙈' : '👁️'}
                   </button>
@@ -201,14 +271,21 @@ export default function Auth() {
               </div>
 
               <button disabled={loading} type="submit" style={{ height: 48, borderRadius: 10, border: 'none', background: '#1a73e8', color: 'white', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}>
-                {loading ? 'Please wait…' : isSignUp ? 'Create Account' : 'Sign In'}
+                {loading ? 'Please wait…' : (isSSORegister ? 'Complete Registration' : (isSignUp ? 'Create Account' : 'Sign In'))}
               </button>
             </form>
 
             <div style={{ textAlign: 'center', marginTop: 8 }}>
-              <button onClick={() => setIsSignUp(!isSignUp)} style={{ background: 'transparent', border: 'none', color: '#6b7280', cursor: 'pointer' }}>
-                {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
-              </button>
+              {!isSSORegister && (
+                <button onClick={() => setIsSignUp(!isSignUp)} style={{ background: 'transparent', border: 'none', color: '#6b7280', cursor: 'pointer' }}>
+                  {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
+                </button>
+              )}
+              {isSSORegister && (
+                <div style={{ fontSize: '13px', color: '#666' }}>
+                  Verify your details and set a password to continue.
+                </div>
+              )}
             </div>
 
             {!isSignUp && (

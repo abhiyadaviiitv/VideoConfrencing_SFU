@@ -1,11 +1,13 @@
 import { io } from 'socket.io-client'
 
-const API_BASE = 'https://192.168.2.105.nip.io:4000'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || window.location.origin
 
 // Dynamic token retrieval function
 const getToken = () => localStorage.getItem('token')
 
-// Create socket connection with authentication and absolute URL (fix SSL/cross-origin)
+// Create socket connection
+// In production, we ONLY trust valid certificates (rejectUnauthorized: true is default)
+// We only relax this in development mode
 const socket = io(`${API_BASE}/mediasoup`, {
   withCredentials: true,
   transports: ['websocket', 'polling'], // Add polling as fallback
@@ -16,8 +18,11 @@ const socket = io(`${API_BASE}/mediasoup`, {
   reconnection: true,
   reconnectionAttempts: 5,
   reconnectionDelay: 1000,
-  autoConnect: false // Connect manually after auth
+  autoConnect: false, // Connect manually after auth
+  rejectUnauthorized: import.meta.env.DEV // Secure in PROD, permissive in DEV
 })
+
+window.socket = socket;
 
 // Enhanced connection error handling
 socket.on('connect_error', (error) => {

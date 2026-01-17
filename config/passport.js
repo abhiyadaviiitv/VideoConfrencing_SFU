@@ -41,7 +41,7 @@ passport.use(new GoogleStrategy(
   {
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: process.env.GOOGLE_CALLBACK_URL || 'https://192.168.2.105.nip.io:4000/auth/google/callback',
+    callbackURL: process.env.GOOGLE_CALLBACK_URL || 'https://10.37.80.42.nip.io:4000/auth/google/callback',
     scope: ['profile', 'email']
   },
   async (accessToken, refreshToken, profile, done) => {
@@ -85,7 +85,7 @@ passport.use(new GitHubStrategy(
   {
     clientID: process.env.GITHUB_CLIENT_ID,
     clientSecret: process.env.GITHUB_CLIENT_SECRET,
-    callbackURL: process.env.GITHUB_CALLBACK_URL || 'https://192.168.2.105.nip.io:4000/auth/github/callback',
+    callbackURL: process.env.GITHUB_CALLBACK_URL || 'https://10.37.80.42.nip.io:4000/auth/github/callback',
     scope: ['user:email']
   },
   async (accessToken, refreshToken, profile, done) => {

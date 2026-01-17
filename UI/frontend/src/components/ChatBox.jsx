@@ -1,81 +1,56 @@
 import { useState, useEffect, useRef } from 'react'
 
-export default function ChatBox({ isOpen, onClose, roomId, currentUserId, socket }) {
+export default function ChatBox({ isOpen, onClose, roomId, currentUserId, socket, participantProfiles }) {
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
-  const [isConnected, setIsConnected] = useState(false)
+  const [isConnected, setIsConnected] = useState(socket?.connected || false)
   const messagesEndRef = useRef(null)
 
-  // Always listen for chat events, regardless of whether chat box is open
+  // Scroll to bottom when new messages arrive
   useEffect(() => {
-    if (roomId && socket) {
-      setIsConnected(socket.connected)
-      
-      // Note: User is already auto-joined to chat when entering room
-      // No need to emit join-chat again
-
-      const handleConnect = () => {
-        setIsConnected(true)
-      }
-
-      const handleDisconnect = () => {
-        setIsConnected(false)
-      }
-
-      const handleChatMessage = (messageData) => {
-        console.log('Chat message received:', messageData)
-        setMessages(prev => [...prev, {
-          id: Date.now() + Math.random(),
-          ...messageData,
-          timestamp: new Date(messageData.timestamp)
-        }])
-      }
-
-      const handleUserJoinedChat = (data) => {
-        setMessages(prev => [...prev, {
-          id: Date.now() + Math.random(),
-          type: 'system',
-          message: `${data.userId} joined the chat`,
-          timestamp: new Date()
-        }])
-      }
-
-      const handleUserLeftChat = (data) => {
-        setMessages(prev => [...prev, {
-          id: Date.now() + Math.random(),
-          type: 'system',
-          message: `${data.userId} left the chat`,
-          timestamp: new Date()
-        }])
-      }
-
-      socket.on('connect', handleConnect)
-      socket.on('disconnect', handleDisconnect)
-      socket.on('chat-message', handleChatMessage)
-      socket.on('user-joined-chat', handleUserJoinedChat)
-      socket.on('user-left-chat', handleUserLeftChat)
-
-      return () => {
-        socket.off('connect', handleConnect)
-        socket.off('disconnect', handleDisconnect)
-        socket.off('chat-message', handleChatMessage)
-        socket.off('user-joined-chat', handleUserJoinedChat)
-        socket.off('user-left-chat', handleUserLeftChat)
-      }
-    }
-  }, [roomId, socket]) // Removed isOpen dependency
-
-  useEffect(() => {
-    // Scroll to bottom when new messages arrive
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Monitor socket connection status
+  useEffect(() => {
+    if (!socket) return
+
+    const handleConnect = () => setIsConnected(true)
+    const handleDisconnect = () => setIsConnected(false)
+
+    socket.on('connect', handleConnect)
+    socket.on('disconnect', handleDisconnect)
+
+    // Set initial state
+    setIsConnected(socket.connected)
+
+    return () => {
+      socket.off('connect', handleConnect)
+      socket.off('disconnect', handleDisconnect)
+    }
+  }, [socket])
+
+  // Listen for incoming messages (always listen, even when closed)
+  useEffect(() => {
+    if (!socket) return
+
+    const handleMessage = (message) => {
+      setMessages(prev => [...prev, { ...message, id: Date.now() + Math.random() }])
+    }
+
+    socket.on('chat-message', handleMessage)
+
+    return () => {
+      socket.off('chat-message', handleMessage)
+    }
+  }, [socket]) // Removed isOpen - always listen!
+
   const sendMessage = () => {
-    if (!newMessage.trim() || !isConnected || !socket) return
+    if (!newMessage.trim() || !socket || !roomId) return
 
     const messageData = {
       roomId,
-      userId: currentUserId || 'Anonymous',
+      userId: currentUserId,
       message: newMessage.trim(),
       timestamp: new Date().toISOString()
     }
@@ -92,16 +67,25 @@ export default function ChatBox({ isOpen, onClose, roomId, currentUserId, socket
   }
 
   const formatTime = (timestamp) => {
-    return new Date(timestamp).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    })
+    const date = new Date(timestamp)
+    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
   }
 
   const formatUserId = (userId) => {
     if (userId === currentUserId) return 'You'
     if (userId === 'Anonymous') return 'Anonymous'
+
+    // Look up name in profiles
+    if (participantProfiles) {
+      if (participantProfiles instanceof Map) {
+        const profile = participantProfiles.get(userId);
+        if (profile && profile.name) return profile.name;
+      } else {
+        const profile = participantProfiles[userId];
+        if (profile && profile.name) return profile.name;
+      }
+    }
+
     return `User ${userId.slice(-6)}`
   }
 
@@ -126,8 +110,8 @@ export default function ChatBox({ isOpen, onClose, roomId, currentUserId, socket
             </div>
           ) : (
             messages.map((msg) => (
-              <div 
-                key={msg.id} 
+              <div
+                key={msg.id}
                 className={`message ${msg.type === 'system' ? 'system-message' : ''} ${msg.userId === currentUserId ? 'own-message' : ''}`}
               >
                 {msg.type === 'system' ? (
@@ -161,7 +145,7 @@ export default function ChatBox({ isOpen, onClose, roomId, currentUserId, socket
               rows={1}
               className="chat-input"
             />
-            <button 
+            <button
               onClick={sendMessage}
               disabled={!newMessage.trim() || !isConnected}
               className="send-btn"

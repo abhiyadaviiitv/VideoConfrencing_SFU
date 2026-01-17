@@ -1,6 +1,8 @@
 /* eslint-disable no-unused-vars */
 import { useEffect, useState } from 'react'
 
+import { TrashIcon, CloseIcon, CameraOffIcon, MicOffIcon, UsersIcon } from './Icons';
+
 export default function ParticipantList({ isOpen, onClose, roomId, currentUserId, isHost, hostId, participants = [], participantProfiles = new Map(), onRemoveParticipant, onMuteParticipant }) {
   const [isConnected, setIsConnected] = useState(false)
 
@@ -57,12 +59,12 @@ export default function ParticipantList({ isOpen, onClose, roomId, currentUserId
     <div className="participant-overlay">
       <div className="participant-container">
         <div className="participant-header">
-          <h3>👥 Participants ({participants.length})</h3>
+          <h3><UsersIcon /> Participants ({participants.length})</h3>
           <div className="participant-status">
             <div className={`status-dot ${isConnected ? 'connected' : 'disconnected'}`}></div>
             <span>{isConnected ? 'Connected' : 'Connecting...'}</span>
           </div>
-          <button onClick={onClose} className="participant-close-btn">✕</button>
+          <button onClick={onClose} className="participant-close-btn"><CloseIcon /></button>
         </div>
 
         <div className="participant-list">
@@ -108,14 +110,14 @@ export default function ParticipantList({ isOpen, onClose, roomId, currentUserId
                     </div>
                   </div>
                   <div className="participant-indicators">
-                    {participant.isMuted && <span className="indicator muted">🔇</span>}
-                    {participant.isCameraOff && <span className="indicator camera-off">📷</span>}
+                    {participant.isMuted && <span className="indicator muted"><MicOffIcon /></span>}
+                    {participant.isCameraOff && <span className="indicator camera-off"><CameraOffIcon /></span>}
                   </div>
                 </div>
 
                 <div className="participant-info">
                   <div className="participant-name">
-                    {getParticipantName(participant)}
+                    {getParticipantName(participant.id)}
                     {participant.id === currentUserId && <span className="you-badge"> (You)</span>}
                   </div>
                   <div className="participant-details">
@@ -136,7 +138,7 @@ export default function ParticipantList({ isOpen, onClose, roomId, currentUserId
                         title="Remove participant"
                         onClick={() => onRemoveParticipant && onRemoveParticipant(participant.id)}
                       >
-                        🚫
+                        <TrashIcon />
                       </button>
                     </>
                   )}

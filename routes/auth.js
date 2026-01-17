@@ -286,4 +286,282 @@ router.get('/github/callback',
   }
 )
 
+// API endpoint to create room programmatically (for Learnsphere integration)
+// This creates a room and returns the room ID without requiring socket connection
+router.post('/api/create-room', authenticateToken, async (req, res) => {
+  try {
+    const { v4: uuidv4 } = await import('uuid')
+    const mediasoup = await import('mediasoup')
+    
+    // Get user info
+    const userId = req.user.id
+    const user = await User.findById(userId)
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    // Generate room ID
+    const roomId = uuidv4()
+    
+    // Note: Actual room creation with mediasoup router happens when first user joins via socket
+    // This endpoint just reserves the room ID and returns it
+    // The room will be created when the teacher joins via socket
+    
+    res.json({
+      success: true,
+      roomId: roomId,
+      message: 'Room ID reserved. Room will be created when first participant joins.'
+    })
+  } catch (error) {
+    console.error('Error creating room:', error)
+    res.status(500).json({ error: 'Failed to create room: ' + error.message })
+  }
+})
+
+// SSO endpoint for Learnsphere integration
+// Accepts a short-lived JWT token from Learnsphere and creates/authenticates user
+router.post('/sso/learnsphere', async (req, res) => {
+  try {
+    const { token, roomId, returnUrl } = req.body
+
+    if (!token || !roomId) {
+      return res.status(400).json({ error: 'Token and roomId are required' })
+    }
+
+    // Verify the SSO token
+    // Note: In production, both apps should share the same JWT_SECRET
+    // or use a token exchange service
+    let decoded
+    try {
+      const jwt = await import('jsonwebtoken')
+      // Try LEARNSPHERE_JWT_SECRET first, then fall back to JWT_SECRET
+      const secret = process.env.LEARNSPHERE_JWT_SECRET || process.env.JWT_SECRET
+      
+      if (!secret) {
+        console.error('SSO: No JWT_SECRET configured')
+        throw new Error('JWT_SECRET not configured in Connective')
+      }
+
+      console.log('SSO: Verifying token...')
+      decoded = jwt.default.verify(token, secret)
+      console.log('SSO: Token verified successfully. Decoded:', {
+        id: decoded.id,
+        userId: decoded.userId,
+        username: decoded.username,
+        email: decoded.email,
+        roomId: decoded.roomId
+      })
+    } catch (error) {
+      console.error('SSO token verification failed:', error.message)
+      console.error('Token (first 50 chars):', token.substring(0, 50))
+      console.error('Available secrets:', {
+        hasJWT_SECRET: !!process.env.JWT_SECRET,
+        hasLEARNSPHERE_JWT_SECRET: !!process.env.LEARNSPHERE_JWT_SECRET,
+        JWT_SECRET_length: process.env.JWT_SECRET?.length || 0,
+        LEARNSPHERE_JWT_SECRET_length: process.env.LEARNSPHERE_JWT_SECRET?.length || 0
+      })
+      return res.status(401).json({ 
+        error: 'Invalid or expired SSO token',
+        details: error.message,
+        hint: 'Make sure both apps use the same JWT_SECRET. Set LEARNSPHERE_JWT_SECRET in Connective to match Learnsphere\'s jwt.secret'
+      })
+    }
+
+    // Extract user information from token
+    // The token should contain userId, roomId, classId
+    const userId = decoded.id || decoded.userId
+    const username = decoded.username || decoded.email || `user_${userId}`
+    const email = decoded.email || `${username}@learnsphere.local`
+    const name = decoded.name || username
+
+    if (!userId) {
+      return res.status(400).json({ error: 'Invalid token: missing user ID' })
+    }
+
+    // Find or create user in Connective database
+    let user = await User.findByEmail(email)
+    
+    if (!user) {
+      // Create new user from Learnsphere profile
+      user = await User.create({
+        email: email,
+        name: name,
+        provider: 'learnsphere',
+        provider_id: userId.toString()
+      })
+      console.log(`Created new Connective user from Learnsphere: ${user.id}`)
+    } else {
+      // Update existing user profile if needed
+      if (user.name !== name) {
+        await User.updateProfile(user.id, { name: name })
+      }
+    }
+
+    // Generate Connective JWT token for this session
+    const connectiveToken = User.generateToken(user)
+
+    // Store user info in localStorage format for Connective frontend
+    // This will be used when the user joins the room
+    const userInfoForRoom = {
+      name: user.name,
+      email: user.email,
+      userId: user.id.toString()
+    }
+
+    // Return token and redirect URL
+    // For teacher (host): use autoJoined=true to skip joinRoom call
+    // For student: use autoJoined=false to trigger joinRoom call
+    const frontend = process.env.FRONTEND_URL || 'https://localhost:5173'
+    const isHost = req.body.isHost || false // Can be passed from Learnsphere
+    const autoJoined = isHost // Teacher auto-joins, students need to join
+    const redirectPath = returnUrl || `/room/${roomId}?token=${connectiveToken}&autoJoined=${autoJoined}`
+
+    res.json({
+      success: true,
+      token: connectiveToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        avatar_url: user.avatar_url
+      },
+      userInfo: userInfoForRoom, // For socket joinRoom call
+      redirectUrl: `${frontend}${redirectPath}`,
+      roomId: roomId,
+      isHost: isHost
+    })
+  } catch (error) {
+    console.error('SSO error:', error)
+    res.status(500).json({ error: 'SSO authentication failed: ' + error.message })
+  }
+})
+
+// GET endpoint for SSO (for URL-based token passing)
+router.get('/sso/learnsphere', async (req, res) => {
+  try {
+    const { token, roomId, returnUrl, isHost } = req.query
+
+    if (!token || !roomId) {
+      console.error('SSO: Missing token or roomId')
+      return res.status(400).send(`
+        <html>
+          <body>
+            <h1>SSO Error</h1>
+            <p>Token and roomId are required</p>
+            <script>setTimeout(() => window.close(), 3000)</script>
+          </body>
+        </html>
+      `)
+    }
+
+    // Verify the SSO token
+    let decoded
+    try {
+      const jwt = await import('jsonwebtoken')
+      // Try both JWT secrets - Learnsphere might use a different one
+      const secret = process.env.LEARNSPHERE_JWT_SECRET || process.env.JWT_SECRET
+      
+      if (!secret) {
+        console.error('SSO: No JWT_SECRET configured')
+        throw new Error('JWT_SECRET not configured')
+      }
+
+      console.log('SSO: Verifying token with secret:', secret.substring(0, 10) + '...')
+      decoded = jwt.default.verify(token, secret)
+      console.log('SSO: Token decoded successfully:', { id: decoded.id, userId: decoded.userId, roomId: decoded.roomId })
+    } catch (error) {
+      console.error('SSO token verification failed:', error.message)
+      console.error('Token:', token.substring(0, 50) + '...')
+      console.error('Available env vars:', {
+        hasJWT_SECRET: !!process.env.JWT_SECRET,
+        hasLEARNSPHERE_JWT_SECRET: !!process.env.LEARNSPHERE_JWT_SECRET
+      })
+      
+      // Return a user-friendly error page instead of redirecting
+      return res.status(401).send(`
+        <html>
+          <head><title>SSO Authentication Failed</title></head>
+          <body style="font-family: Arial, sans-serif; padding: 40px; text-align: center;">
+            <h1>Authentication Failed</h1>
+            <p>The SSO token is invalid or expired. Please try again.</p>
+            <p style="color: #666; font-size: 12px;">Error: ${error.message}</p>
+            <p><a href="javascript:window.close()">Close this window</a></p>
+            <script>
+              // Try to redirect back to Learnsphere after 3 seconds
+              setTimeout(() => {
+                const learnsphereUrl = '${process.env.LEARNSPHERE_URL || 'http://localhost:8080'}'
+                window.location.href = learnsphereUrl + '/teacher/class/${req.query.classId || ''}'
+              }, 3000)
+            </script>
+          </body>
+        </html>
+      `)
+    }
+
+    // Extract user information from token
+    // Token should have: id, userId, username, email, name (from Learnsphere)
+    const userId = decoded.id || decoded.userId
+    const username = decoded.username || decoded.email || decoded.sub || `user_${userId}`
+    const email = decoded.email || `${username}@learnsphere.local`
+    const name = decoded.name || username
+
+    console.log('SSO: Extracted user info:', { userId, username, email, name })
+
+    if (!userId) {
+      console.error('SSO: No user ID found in token')
+      return res.status(400).send(`
+        <html>
+          <body>
+            <h1>SSO Error</h1>
+            <p>Invalid token: missing user ID</p>
+            <p>Token payload: ${JSON.stringify(decoded, null, 2)}</p>
+            <script>setTimeout(() => window.close(), 3000)</script>
+          </body>
+        </html>
+      `)
+    }
+
+    // Find or create user
+    let user = await User.findByEmail(email)
+    
+    if (!user) {
+      user = await User.create({
+        email: email,
+        name: name,
+        provider: 'learnsphere',
+        provider_id: userId.toString()
+      })
+    } else {
+      if (user.name !== name) {
+        await User.updateProfile(user.id, { name: name })
+      }
+    }
+
+    // Generate Connective token
+    const connectiveToken = User.generateToken(user)
+
+    // Determine if this is a host (teacher) or participant (student)
+    // isHost comes from query parameter (true for teacher, false/undefined for student)
+    const isHostFlag = isHost === 'true' || isHost === true
+    
+    // Store user info in localStorage format (will be set by Connective frontend)
+    // For teacher: auto-join (like createRoom) - room is created when they join via socket
+    // For student: join existing room (like joinRoom)
+    
+    // Redirect to room with token
+    // Teacher (host) uses autoJoined=true to skip joinRoom call (matches createRoom pattern)
+    // Student uses autoJoined=false to trigger joinRoom call (matches joinRoom pattern)
+    const frontend = process.env.FRONTEND_URL || 'https://localhost:5173'
+    const autoJoined = isHostFlag // Teacher auto-joins, students need to join via socket
+    const redirectPath = returnUrl || `/room/${roomId}?token=${connectiveToken}&autoJoined=${autoJoined}`
+    
+    console.log(`SSO redirect: roomId=${roomId}, isHost=${isHostFlag}, autoJoined=${autoJoined}`)
+    res.redirect(`${frontend}${redirectPath}`)
+  } catch (error) {
+    console.error('SSO GET error:', error)
+    const learnsphereUrl = process.env.LEARNSPHERE_URL || 'http://localhost:8080'
+    res.redirect(`${learnsphereUrl}/error?message=SSO+failed`)
+  }
+})
+
 export default router

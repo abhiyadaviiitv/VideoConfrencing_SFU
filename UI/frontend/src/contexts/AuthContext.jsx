@@ -14,20 +14,31 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   // Check for token in URL (from OAuth redirect)
+  // Check for token in URL (from OAuth redirect)
   const [token, setToken] = useState(() => {
     const params = new URLSearchParams(window.location.search)
     const urlToken = params.get('token')
-    if (urlToken) {
-      localStorage.setItem('token', urlToken)
-      localStorage.setItem('jwt', urlToken) // Store under both keys for compatibility
-      // Clean URL
-      window.history.replaceState({}, document.title, window.location.pathname)
-      return urlToken
-    }
+    if (urlToken) return urlToken
+
     return localStorage.getItem('token') || localStorage.getItem('jwt')
   })
 
-  const apiBase = 'https://192.168.2.105:4000'
+  // Persist token and clean URL
+  useEffect(() => {
+    if (token) {
+      localStorage.setItem('token', token)
+      localStorage.setItem('jwt', token) // Store under both keys for compatibility
+
+      // Clean URL if it contains the token we just extracted
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('token') === token) {
+        const newUrl = window.location.pathname
+        window.history.replaceState({}, document.title, newUrl)
+      }
+    }
+  }, [token])
+
+  const apiBase = import.meta.env.VITE_API_BASE_URL || `https://${window.location.hostname}:4000`
 
   // Check if we have cached user data to reduce loading time
   const getCachedUser = () => {
@@ -66,6 +77,7 @@ export const AuthProvider = ({ children }) => {
 
   // Fetch user profile
   const fetchUser = async () => {
+    console.log('AuthContext: fetchUser called, token present:', !!token);
     if (!token) {
       setLoading(false)
       return
@@ -74,6 +86,7 @@ export const AuthProvider = ({ children }) => {
     // Try to use cached user data first for faster loading
     const cachedUser = getCachedUser()
     if (cachedUser) {
+      console.log('AuthContext: Using cached user');
       setUser(cachedUser)
       setLoading(false)
       // Still fetch fresh data in background but don't show loading
@@ -82,6 +95,7 @@ export const AuthProvider = ({ children }) => {
     }
 
     try {
+      console.log(`AuthContext: Fetching from ${apiBase}/auth/me`);
       const response = await fetch(`${apiBase}/auth/me`, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -90,9 +104,11 @@ export const AuthProvider = ({ children }) => {
 
       if (response.ok) {
         const data = await response.json()
+        console.log('AuthContext: fetchUser success', data.user.id);
         setUser(data.user)
         setCachedUser(data.user)
       } else {
+        console.error('AuthContext: fetchUser failed status:', response.status);
         // Token is invalid, remove it
         localStorage.removeItem('token')
         setToken(null)

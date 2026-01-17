@@ -312,8 +312,8 @@ const createWebRtcTransport = async (router, socketId, sender, callback) => {
         {
           ip: '0.0.0.0',
           // Use localhost for local development, or your actual public IP for production
-          //announcedIp: '127.0.0.1',
-          announcedIp: '192.168.2.105',
+          announcedIp: '127.0.0.1',
+          // announcedIp: '192.168.2.105',
         },
       ],
       enableUdp: true,
@@ -844,7 +844,8 @@ peers.on('connection', async (socket) => {
       console.log(`Producer created successfully: ${producer.id} for ${socket.id}`);
       socket.to(roomId).emit('newProducer', {
         producerId: producer.id,
-        peerId: socket.id
+        peerId: socket.id,
+        appData: producer.appData // Broadcast appData (contains presenterName)
       });
 
       callback({
@@ -1431,5 +1432,4 @@ const initializeServer = async () => {
     process.exit(1)
   }
 }
-
 initializeServer()

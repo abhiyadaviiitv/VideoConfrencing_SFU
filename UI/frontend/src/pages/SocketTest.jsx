@@ -91,7 +91,7 @@ const SocketTest = () => {
       <div>
         <h3>Debug Info:</h3>
         <ul>
-          <li>Socket URL: http://192.168.2.105:4000/mediasoup</li>
+          <li>Socket URL: http://10.37.80.42:4000/mediasoup</li>
           <li>Transport: {socket.io.engine.transport.name}</li>
           <li>Connected: {socket.connected ? 'Yes' : 'No'}</li>
           <li>Token Present: {localStorage.getItem('token') ? 'Yes' : 'No'}</li>

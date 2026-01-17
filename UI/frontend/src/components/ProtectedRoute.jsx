@@ -4,17 +4,17 @@ import { useAuth } from '../contexts/AuthContext'
 export default function ProtectedRoute({ children, redirectTo = '/auth' }) {
   const { isAuthenticated, loading } = useAuth()
   const location = useLocation()
-  
+
   // Create redirect URL with current path as redirect parameter
   const redirectUrl = `${redirectTo}?redirect=${encodeURIComponent(location.pathname)}`
 
   // Show loading while checking authentication
   if (loading) {
     return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
         height: '100vh',
         flexDirection: 'column',
         gap: '20px',

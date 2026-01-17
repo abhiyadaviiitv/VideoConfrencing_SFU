@@ -12,6 +12,8 @@
   "dependencies": {
     "axios": "^1.11.0",
     "mediasoup-client": "^3.15.2",
+    "puppeteer": "^24.34.0",
+    "puppeteer-stream": "^3.0.22",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.8.1",

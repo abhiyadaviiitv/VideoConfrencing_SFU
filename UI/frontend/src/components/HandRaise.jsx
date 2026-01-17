@@ -58,11 +58,32 @@ const HandRaise = ({ roomId, currentUserId, isHost, socket, onRaisedHandsChange 
   }, [raisedHands, onRaisedHandsChange]);
 
   const toggleHandRaise = () => {
-    if (!socket || !isConnected) return;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/61ba8bd1-5a40-4e87-b536-f0bcf18abf50',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HandRaise.jsx:60',message:'Hand raise toggle clicked',data:{socket:!!socket,isConnected,roomId,currentUserId,isHandRaised},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+    // #endregion
+    
+    if (!socket || !isConnected) {
+      console.error('Cannot raise hand: socket or connection issue', { socket: !!socket, isConnected });
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/61ba8bd1-5a40-4e87-b536-f0bcf18abf50',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HandRaise.jsx:65',message:'Hand raise blocked - connection issue',data:{socket:!!socket,isConnected},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+      // #endregion
+      return;
+    }
+
+    if (!roomId) {
+      console.error('Cannot raise hand: roomId is missing', { roomId });
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/61ba8bd1-5a40-4e87-b536-f0bcf18abf50',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HandRaise.jsx:72',message:'Hand raise blocked - no roomId',data:{roomId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+      // #endregion
+      return;
+    }
 
     if (isHandRaised) {
       socket.emit('lower-hand', { roomId, userId: currentUserId });
       setIsHandRaised(false);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/61ba8bd1-5a40-4e87-b536-f0bcf18abf50',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HandRaise.jsx:78',message:'Lower hand emitted',data:{roomId,userId:currentUserId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+      // #endregion
     } else {
       socket.emit('raise-hand', { 
         roomId, 
@@ -70,6 +91,9 @@ const HandRaise = ({ roomId, currentUserId, isHost, socket, onRaisedHandsChange 
         userName: `Client ${currentUserId.substring(0, 8)}` 
       });
       setIsHandRaised(true);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/61ba8bd1-5a40-4e87-b536-f0bcf18abf50',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HandRaise.jsx:87',message:'Raise hand emitted',data:{roomId,userId:currentUserId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+      // #endregion
     }
   };
 
