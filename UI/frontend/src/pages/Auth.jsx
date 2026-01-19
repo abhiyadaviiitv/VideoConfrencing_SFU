@@ -17,7 +17,9 @@ export default function Auth() {
     const mode = searchParams.get('mode')
     const isFromSignUp = mode === 'signup'
     const isSSORegister = mode === 'sso-register'
-    const redirectTo = searchParams.get('redirect')
+    const redirectTo = searchParams.get('returnUrl') || searchParams.get('redirect')
+    const prefillEmail = searchParams.get('email')
+    const prefillName = searchParams.get('name')
 
     if (isFromSignUp) {
       setIsSignUp(true)
@@ -25,10 +27,16 @@ export default function Auth() {
       setIsSignUp(true) // Reuse signup UI
       // Pre-fill form from params
       setFormData({
-        name: searchParams.get('name') || '',
-        email: searchParams.get('email') || '',
+        name: prefillName || '',
+        email: prefillEmail || '',
         password: ''
       })
+    } else if (prefillEmail) {
+      // Pre-fill email for login (from SSO)
+      setFormData(prev => ({
+        ...prev,
+        email: prefillEmail
+      }))
     }
 
     // Store redirect path for after authentication
@@ -42,7 +50,10 @@ export default function Auth() {
     // Don't auto-redirect if we are in the middle of SSO registration to avoid confusion
     // (Though normally authenticated users shouldn't reach here unless manually navigating)
     if (isAuthenticated && searchParams.get('mode') !== 'sso-register') {
-      const redirectPath = localStorage.getItem('authRedirect')
+      // Check for returnUrl from query params first (SSO flow), then localStorage
+      const returnUrl = searchParams.get('returnUrl')
+      const redirectPath = returnUrl || localStorage.getItem('authRedirect')
+      
       if (redirectPath) {
         localStorage.removeItem('authRedirect')
         navigate(redirectPath)
@@ -138,29 +149,31 @@ export default function Auth() {
       // Use the login function from AuthContext
       login(data.token, data.user)
 
-      // Post-Signup Redirection for SSO
-      const ssoToken = searchParams.get('ssoToken'); // New param name
-      const roomId = searchParams.get('roomId');
-
-      if (ssoToken && roomId) {
-        // Use createSearchParams to ensure safe encoding of the JWT
-        navigate({
-          pathname: `/room/${roomId}`,
-          search: `?${createSearchParams({ token: ssoToken, autoJoined: 'true' }).toString()}`
-        });
-      } else if (isSSORegister) {
-        // ... (Old Logic, likely unused now) ...
-        const isHost = searchParams.get('isHost') === 'true'
-        navigate(`/room/${roomId}?autoJoined=${isHost}`)
+      // Check for returnUrl (from SSO or other redirects)
+      // Priority: query param returnUrl (SSO) > localStorage authRedirect > lobby
+      const returnUrl = searchParams.get('returnUrl')
+      const ssoToken = searchParams.get('ssoToken') // Additional flag for SSO
+      const isFromSSO = !!returnUrl || !!ssoToken // Login is from Learnsphere SSO if returnUrl or ssoToken exists
+      
+      const redirectPath = returnUrl || localStorage.getItem('authRedirect')
+      
+      console.log('Login redirect check:', { 
+        returnUrl, 
+        ssoToken: !!ssoToken, 
+        isFromSSO, 
+        redirectPath,
+        hasLocalStorage: !!localStorage.getItem('authRedirect')
+      })
+      
+      if (redirectPath) {
+        localStorage.removeItem('authRedirect')
+        // Navigate to the returnUrl (room path from SSO) instead of lobby
+        console.log('Redirecting to:', redirectPath)
+        navigate(redirectPath)
       } else {
-        // Normal Signup/Login
-        const redirectPath = localStorage.getItem('authRedirect')
-        if (redirectPath) {
-          localStorage.removeItem('authRedirect')
-          navigate(redirectPath)
-        } else {
-          navigate('/lobby')
-        }
+        // Normal Signup/Login - go to lobby (only if not from SSO)
+        console.log('No redirect path found, going to lobby')
+        navigate('/lobby')
       }
 
     } catch (err) {

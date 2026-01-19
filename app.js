@@ -531,9 +531,10 @@ peers.on('connection', async (socket) => {
       callback = data;
       data = {};
     }
-    const { userInfo } = data || {};
+    const { userInfo, roomId: providedRoomId } = data || {};
 
-    const roomId = uuidv4();
+    // Use provided roomId (from Learnsphere) or generate a new one
+    const roomId = providedRoomId || uuidv4();
     try {
       const router = await worker.createRouter({ mediaCodecs });
 
@@ -644,8 +645,69 @@ peers.on('connection', async (socket) => {
     });
   });
 
-  socket.on('joinRoom', async ({ roomId, isHostReconnecting, userInfo }, callback) => {
-    if (!rooms[roomId]) {
+  socket.on('joinRoom', async ({ roomId, isHostReconnecting, userInfo, createIfNotExists, isHost: isHostParam }, callback) => {
+    // If room doesn't exist and createIfNotExists is true (for SSO from Learnsphere)
+    if (!rooms[roomId] && createIfNotExists) {
+      console.log(`Room ${roomId} does not exist, creating it for SSO host...`);
+      
+      try {
+        // Create the room structure (same as createRoom)
+        const router = await worker.createRouter({ mediaCodecs });
+        
+        const audioLevelObserver = await router.createAudioLevelObserver({
+          maxEntries: 1,
+          threshold: -45,
+          interval: 200
+        });
+
+        audioLevelObserver.on('volumes', ([{ producer }]) => {
+          if (producer && !producer.paused) {
+            const peerId = producer.appData.socketId;
+            peers.to(roomId).emit('activeSpeaker', { peerId });
+          }
+        });
+
+        rooms[roomId] = {
+          router,
+          transports: {},
+          producers: {},
+          consumers: {},
+          peers: new Set(),
+          peerInfo: new Map(),
+          audioLevelObserver,
+          host: socket.id // Current socket is the host
+        };
+
+        // Add socket to room and join Socket.IO room
+        rooms[roomId].peers.add(socket.id);
+        socket.join(roomId);
+
+        // Store user information for the host
+        if (userInfo) {
+          rooms[roomId].peerInfo.set(socket.id, userInfo);
+          console.log(`Stored host info for ${socket.id}:`, userInfo);
+          // Also update socketProfiles for global lookup
+          socketProfiles.set(socket.id, {
+            name: userInfo.name,
+            email: userInfo.email,
+            userId: userInfo.userId || socket.id
+          });
+        }
+
+        // Auto-join chat
+        socket.join(`chat-${roomId}`);
+        console.log(`Socket ${socket.id} auto-joined chat for room ${roomId}`);
+
+        console.log(`Room ${roomId} created and joined for SSO host ${socket.id}`);
+        callback({ error: null, isHost: true, hostId: socket.id });
+        return;
+      } catch (error) {
+        console.error(`Error creating room ${roomId} for SSO:`, error);
+        callback({ error: `Failed to create room: ${error.message}` });
+        return;
+      }
+    } else if (!rooms[roomId]) {
+      // Room doesn't exist and we're not allowed to create it
       callback({ error: 'Room does not exist' });
       return;
     }

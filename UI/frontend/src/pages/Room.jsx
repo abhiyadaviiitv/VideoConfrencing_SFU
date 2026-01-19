@@ -1639,6 +1639,45 @@ const Room = () => {
               finishAutoJoinSetup();
             }
           });
+        } else if (response.error === 'Room does not exist') {
+          // Room doesn't exist - try to create it via joinRoom with createIfNotExists
+          // This handles SSO case where roomId is from Learnsphere but room doesn't exist yet
+          console.log('Room does not exist (auto-join), attempting to create via joinRoom...');
+          const userInfo = await getCurrentUserInfo();
+          const params = new URLSearchParams(window.location.search);
+          const urlToken = params.get('token');
+          const urlParams = new URLSearchParams(window.location.search);
+          const isHostParam = urlParams.get('isHost') === 'true' || autoJoined; // autoJoined usually means host
+
+          socket.emit('joinRoom', { 
+            roomId, 
+            userInfo, 
+            token: urlToken,
+            createIfNotExists: isHostParam, // Create room if user is host
+            isHost: isHostParam
+          }, (joinResponse) => {
+            if (joinResponse.error) {
+              console.error("Failed to create/join room:", joinResponse.error);
+              // Fallback to createRoom with roomId
+              socket.emit('createRoom', { roomId, userInfo }, async (createResponse) => {
+                if (createResponse.error) {
+                  console.error('Failed to lazy-create room:', createResponse.error);
+                  alert('Failed to initialize meeting: ' + createResponse.error);
+                  setIsInRoom(false);
+                } else {
+                  console.log('Lazy-created room successfully via createRoom:', createResponse);
+                  setIsHost(true);
+                  setHostId(socket.id);
+                  finishAutoJoinSetup();
+                }
+              });
+            } else {
+              console.log("Room created/joined successfully via joinRoom:", joinResponse);
+              setIsHost(joinResponse.isHost || isHostParam);
+              setHostId(joinResponse.hostId || socket.id);
+              finishAutoJoinSetup();
+            }
+          });
         }
       });
 

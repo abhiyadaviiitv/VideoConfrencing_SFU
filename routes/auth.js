@@ -65,6 +65,33 @@ router.post('/signup', async (req, res) => {
     // Check if user already exists
     const existingUser = await User.findByEmail(email)
     if (existingUser) {
+      // If user exists but has no password, allow them to set one (SSO flow)
+      if (!existingUser.password_hash) {
+        // Update password for existing user
+        const bcrypt = await import('bcryptjs')
+        const password_hash = await bcrypt.default.hash(password, 12)
+        
+        // Update user with password
+        const updatedUser = await User.update(existingUser.id, { 
+          password_hash,
+          name: name || existingUser.name // Update name if provided
+        })
+
+        // Generate JWT token
+        const token = User.generateToken(updatedUser)
+
+        return res.status(200).json({
+          message: 'Password set successfully',
+          user: {
+            id: updatedUser.id,
+            email: updatedUser.email,
+            name: updatedUser.name
+          },
+          token
+        })
+      }
+      
+      // User exists and has password - cannot create duplicate
       return res.status(400).json({ error: 'User already exists' })
     }
 
@@ -458,17 +485,57 @@ router.get('/sso/learnsphere', async (req, res) => {
     let decoded
     try {
       const jwt = await import('jsonwebtoken')
+      const crypto = await import('crypto')
+      
       // Try both JWT secrets - Learnsphere might use a different one
-      const secret = process.env.LEARNSPHERE_JWT_SECRET || process.env.JWT_SECRET
+      let secret = process.env.LEARNSPHERE_JWT_SECRET || process.env.JWT_SECRET
       
       if (!secret) {
         console.error('SSO: No JWT_SECRET configured')
-        throw new Error('JWT_SECRET not configured')
+        throw new Error('JWT_SECRET not configured in Connective. Set LEARNSPHERE_JWT_SECRET to match Learnsphere\'s jwt.secret')
       }
 
-      console.log('SSO: Verifying token with secret:', secret.substring(0, 10) + '...')
-      decoded = jwt.default.verify(token, secret)
-      console.log('SSO: Token decoded successfully:', { id: decoded.id, userId: decoded.userId, roomId: decoded.roomId })
+      // Learnsphere's JwtService decodes the secret using Base64.decode() in getKey()
+      // If the secret is not valid Base64, Java will throw an exception
+      // We need to match the exact byte sequence that Java uses
+      
+      console.log('SSO: Verifying token...')
+      console.log('SSO: Secret length:', secret.length, 'First 10 chars:', secret.substring(0, 10))
+      
+      // Java's Base64.decode() converts Base64 string to byte array
+      // We need to decode the Base64 secret to Buffer to match Java's byte array
+      let secretToUse
+      try {
+        // Try to decode as Base64 first (matching Java's Base64.decode approach)
+        const secretBuffer = Buffer.from(secret, 'base64')
+        console.log('SSO: Secret decoded from Base64, length:', secretBuffer.length)
+        secretToUse = secretBuffer
+      } catch (decodeError) {
+        // If Base64 decode fails, use the secret as-is
+        console.log('SSO: Secret is not Base64, using as plain string')
+        secretToUse = secret
+      }
+      
+      try {
+        decoded = jwt.default.verify(token, secretToUse)
+        console.log('SSO: Token verified successfully')
+      } catch (verifyError) {
+        console.error('SSO: Token verification failed:', verifyError.message)
+        console.error('SSO: Secret type used:', typeof secretToUse)
+        if (Buffer.isBuffer(secretToUse)) {
+          console.error('SSO: Secret buffer length:', secretToUse.length)
+        }
+        throw verifyError
+      }
+      
+      console.log('SSO: Token decoded successfully:', { 
+        id: decoded.id, 
+        userId: decoded.userId, 
+        roomId: decoded.roomId,
+        email: decoded.email,
+        exp: decoded.exp,
+        iat: decoded.iat
+      })
     } catch (error) {
       console.error('SSO token verification failed:', error.message)
       console.error('Token:', token.substring(0, 50) + '...')
@@ -521,42 +588,45 @@ router.get('/sso/learnsphere', async (req, res) => {
       `)
     }
 
-    // Find or create user
+    // Find user - don't auto-create, redirect to login/register instead
     let user = await User.findByEmail(email)
-    
-    if (!user) {
-      user = await User.create({
-        email: email,
-        name: name,
-        provider: 'learnsphere',
-        provider_id: userId.toString()
-      })
-    } else {
-      if (user.name !== name) {
-        await User.updateProfile(user.id, { name: name })
-      }
-    }
-
-    // Generate Connective token
-    const connectiveToken = User.generateToken(user)
-
-    // Determine if this is a host (teacher) or participant (student)
-    // isHost comes from query parameter (true for teacher, false/undefined for student)
+    const frontend = process.env.CONNECTIVE_FRONTEND_URL || process.env.FRONTEND_URL || 'https://localhost:5173'
     const isHostFlag = isHost === 'true' || isHost === true
+    const autoJoined = isHostFlag
+    // Build room path with all necessary query params
+    const roomPath = returnUrl || `/room/${roomId}?autoJoined=${autoJoined}&isHost=${isHostFlag}`
     
-    // Store user info in localStorage format (will be set by Connective frontend)
-    // For teacher: auto-join (like createRoom) - room is created when they join via socket
-    // For student: join existing room (like joinRoom)
+    // If user doesn't exist, redirect to register with pre-filled data
+    if (!user) {
+      console.log(`SSO: User ${email} not found, redirecting to register...`)
+      
+      // Redirect to register page with pre-filled data
+      const registerUrl = `${frontend}/auth?mode=sso-register&email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}&returnUrl=${encodeURIComponent(roomPath)}`
+      
+      console.log(`SSO: Redirecting to register: ${registerUrl}`)
+      return res.redirect(registerUrl)
+    }
     
-    // Redirect to room with token
-    // Teacher (host) uses autoJoined=true to skip joinRoom call (matches createRoom pattern)
-    // Student uses autoJoined=false to trigger joinRoom call (matches joinRoom pattern)
-    const frontend = process.env.FRONTEND_URL || 'https://localhost:5173'
-    const autoJoined = isHostFlag // Teacher auto-joins, students need to join via socket
-    const redirectPath = returnUrl || `/room/${roomId}?token=${connectiveToken}&autoJoined=${autoJoined}`
+    // Check if user has a password (local account) or is OAuth-only
+    // If user exists but has no password_hash, they need to set one
+    if (!user.password_hash) {
+      console.log(`SSO: User ${email} exists but has no password, redirecting to set password...`)
+      
+      // Redirect to register page to set password (pre-filled with existing data)
+      const registerUrl = `${frontend}/auth?mode=sso-register&email=${encodeURIComponent(email)}&name=${encodeURIComponent(name || user.name)}&returnUrl=${encodeURIComponent(roomPath)}`
+      
+      console.log(`SSO: Redirecting to set password: ${registerUrl}`)
+      return res.redirect(registerUrl)
+    }
     
-    console.log(`SSO redirect: roomId=${roomId}, isHost=${isHostFlag}, autoJoined=${autoJoined}`)
-    res.redirect(`${frontend}${redirectPath}`)
+    // User exists and has password - redirect to login with pre-filled email
+    // After login, they'll be redirected to the room using the returnUrl
+    console.log(`SSO: User ${email} exists, redirecting to login...`)
+    
+    const loginUrl = `${frontend}/auth?email=${encodeURIComponent(email)}&returnUrl=${encodeURIComponent(roomPath)}`
+    
+    console.log(`SSO: Redirecting to login: ${loginUrl}`)
+    return res.redirect(loginUrl)
   } catch (error) {
     console.error('SSO GET error:', error)
     const learnsphereUrl = process.env.LEARNSPHERE_URL || 'http://localhost:8080'
